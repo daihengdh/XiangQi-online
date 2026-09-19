@@ -733,3 +733,35 @@ body {
   .fx-result { max-width: 92vw; }
   .fx-result-btns { flex-wrap: wrap; }
 }
+
+/* ---------- 沙盘推演 ---------- */
+.sandbox-dialog { max-width: 1020px; width: 94%; }
+.sandbox-stage {
+  display: flex; justify-content: center; overflow: hidden;
+  border-radius: 10px;
+}
+.sandbox-stage canvas {
+  width: 547px; height: 630px;   /* 0.9x 缩放，点击坐标按 rect 归一化 */
+  border-radius: 8px;
+}
+.sandbox-side { margin-top: 12px; }
+.sandbox-status {
+  font-size: 14.5px; font-weight: 600; color: var(--red); min-height: 22px;
+  font-family: "KaiTi", serif; letter-spacing: 1px;
+}
+.sandbox-trail {
+  font-family: Consolas, monospace; font-size: 12.5px; color: #5e3a12;
+  min-height: 38px; max-height: 64px; overflow-y: auto; margin: 6px 0 10px;
+  line-height: 1.6; background: #fdf6e4; border: 1px solid #d8c391; border-radius: 8px; padding: 6px 10px;
+}
+.sandbox-mate { color: #b03024; font-size: 16px; }
+@media (max-width: 900px) {
+  .sandbox-stage canvas { width: min(90vw, 547px); height: auto; }
+}
+
+.sandbox-open-btn {
+  margin-top: 8px; width: 100%; padding: 9px 12px; border-radius: 8px;
+  border: 1px solid #e8c96a; cursor: pointer; font-size: 14px; font-weight: 700;
+  background: linear-gradient(180deg, #b03024, #7a1104); color: #fff;
+}
+.sandbox-open-btn:hover { filter: brightness(1.2); }

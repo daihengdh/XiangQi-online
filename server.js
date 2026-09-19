@@ -53,9 +53,27 @@ function startPikafish() {
 }
 
 function pikafishBestMove(fen, movetime) {
+  /* 局面合法性校验：双王在位 + 行棋方对手不被将军（违规局面会让引擎行为未定义） */
+  let st = null;
+  try { st = XQ.stateFromFEN(fen); } catch (e) { return Promise.reject(new Error('非法 FEN')); }
+  if (st.kings[0] == null || st.kings[1] == null) return Promise.reject(new Error('局面缺少将/帅'));
+  if (XQ.inCheck(st, -st.turn)) return Promise.reject(new Error('局面非法：行棋方对手正处于被将军状态'));
+
   const run = () => startPikafish().then((ok) => {
     if (!ok || !pf.eng) throw new Error('Pikafish 不可用');
-    return pf.eng.bestMove({ fen, movetime });
+    let timeoutId;
+    const timeout = new Promise((_, rej) => {
+      timeoutId = setTimeout(() => {
+        /* 引擎卡死自愈：杀进程，下次请求自动重启 */
+        try { pf.eng.stop(); } catch (e) {}
+        pf.eng = null;
+        rej(new Error('引擎搜索超时，已自动重启'));
+      }, 20000);
+    });
+    return Promise.race([
+      pf.eng.bestMove({ fen, movetime }).then((r) => { clearTimeout(timeoutId); return r; }),
+      timeout,
+    ]);
   });
   pf.queue = pf.queue.then(run, run);   // 引擎一次只算一步，串行化
   return pf.queue;
@@ -97,10 +115,25 @@ const server = http.createServer((req, res) => {
             out.notation = XQ.moveToChinese(st, XQ.encode(fsq, tsq));
           }
         } catch (e) { /* 校验失败按非法处理 */ }
+        /* 主变着法序列（沙盘推演用）：逐个换算坐标与中文记谱 */
+        if (Array.isArray(r.pv) && r.pv.length) {
+          try {
+            const pst = XQ.stateFromFEN(fen);
+            out.pv = [];
+            for (const u of r.pv) {
+              const [pf, pt] = fromUCI(u);
+              const pm = XQ.encode(pf, pt);
+              if (!XQ.legalMoves(pst).includes(pm)) break;
+              out.pv.push({ from: pf, to: pt, notation: XQ.moveToChinese(pst, pm), cap: pst.board[pt] || 0 });
+              XQ.make(pst, pm);
+            }
+          } catch (e) { /* PV 换算失败不影响主结果 */ }
+        }
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(out));
       }).catch((e) => {
-        res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
+        const bad = /非法|缺少|无合法/.test(e.message || '');
+        res.writeHead(bad ? 400 : 503, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: e.message || 'engine unavailable' }));
       });
     });

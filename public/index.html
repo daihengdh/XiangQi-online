@@ -134,6 +134,7 @@
         <div class="offline-tip">对手走子后，点击他的棋子 → 再点落点录入；轮到你时皮卡鱼自动走出最佳着法（可随时勾选/取消自动）。</div>
         <div class="actions" style="margin-top:10px;grid-template-columns:1fr 1fr">
           <button id="btn-review-now" style="grid-column:1 / -1">📊 复盘分析（当前对局）</button>
+          <button id="btn-sandbox" style="grid-column:1 / -1">⚔ 沙盘推演（当前局面）</button>
           <select id="review-speed">
             <option value="200">复盘速度：快速 0.2s/步</option>
             <option value="350" selected>复盘速度：标准 0.35s/步</option>
@@ -279,6 +280,27 @@
       <div class="btns">
         <button id="history-clear">🗑 清空</button>
         <button id="history-close">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 沙盘推演弹窗 -->
+  <div class="overlay" id="dialog-sandbox">
+    <div class="dialog sandbox-dialog">
+      <h2>⚔ 沙盘推演 <span class="sandbox-mate" id="sandbox-mate"></span></h2>
+      <div class="sandbox-stage">
+        <canvas id="sandbox-board"></canvas>
+      </div>
+      <div class="sandbox-side">
+        <div class="sandbox-status" id="sandbox-status">准备中…</div>
+        <div class="sandbox-trail" id="sandbox-trail"></div>
+        <div class="actions" style="grid-template-columns:1fr 1fr">
+          <button id="sb-demo">▶ 自动演示</button>
+          <button id="sb-stop" style="display:none">⏸ 停止演示</button>
+          <button id="sb-undo">↩ 悔一步</button>
+          <button id="sb-reset">↺ 重置局面</button>
+          <button id="sb-close" style="grid-column:1 / -1">✕ 退出沙盘</button>
+        </div>
       </div>
     </div>
   </div>

@@ -38,6 +38,8 @@ class Pikafish {
     }
     const m = line.match(/^info .*depth (\d+).*score (cp|mate) (-?\d+)/);
     if (m) this.lastInfo = { depth: +m[1], kind: m[2], score: +m[3] };
+    const pv = line.match(/\bpv ((?:[a-i][0-9]){1,}(?: [a-i][0-9])*)/);
+    if (pv) this.lastInfo = Object.assign(this.lastInfo || {}, { pv: pv[1].split(/\s+/) });
   }
 
   _send(cmd) {
@@ -100,6 +102,7 @@ class Pikafish {
         out.score = this.lastInfo.score;
         out.depth = this.lastInfo.depth;
         out.kind = this.lastInfo.kind;   // 'cp' | 'mate'（mate 时 score = 步数，正=行棋方将杀）
+        if (this.lastInfo.pv) out.pv = this.lastInfo.pv;   // 主变着法序列（UCI 坐标）
       }
       return out;
     });

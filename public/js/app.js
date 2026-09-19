@@ -342,7 +342,7 @@
     $('offline-suggest').innerHTML = '';
     board.clearHint();
     const stale = () => (G.mode !== 'offline' || G.over || token !== G.suggestToken || XQ.toFEN(G.st) !== fen);
-    const show = (from, to, score, depth, engine, isBook) => {
+    const show = (from, to, score, depth, engine, isBook, kind, pv) => {
       if (stale()) return;
       if (auto) {
         /* 自动替用户走子（带动画/音效/记谱） */
@@ -357,7 +357,20 @@
         strong.textContent = '🤖 已替你走：' + notation;
         const detail = document.createElement('div');
         detail.className = 'offline-suggest-detail';
-        detail.textContent = '【' + engine + '】深度 ' + depth + ' · 评分 ' + score + ' — 请照此在实体棋盘落子';
+        if (kind === 'mate' && score > 0) {
+          detail.textContent = '【' + engine + '】🎯 发现绝杀：' + score + ' 步将死！';
+          if (pv && pv.length) {
+            const btn = document.createElement('button');
+            btn.className = 'sandbox-open-btn';
+            btn.textContent = '⚔ 沙盘推演这条杀招';
+            btn.onclick = () => { SFX.S.click(); openSandbox(fen, pv, score); };
+            sg.appendChild(detail);
+            sg.appendChild(btn);
+            return;
+          }
+        } else {
+          detail.textContent = '【' + engine + '】深度 ' + depth + ' · 评分 ' + score + ' — 请照此在实体棋盘落子';
+        }
         sg.appendChild(strong);
         sg.appendChild(detail);
         return;
@@ -367,13 +380,29 @@
       const sg = $('offline-suggest');
       const strong = document.createElement('div');
       strong.className = 'offline-suggest-move';
-      strong.textContent = '💡 建议走：' + notation;
+      if (kind === 'mate' && score > 0) {
+        strong.textContent = '🎯 ' + score + ' 步绝杀！';
+      } else {
+        strong.textContent = '💡 建议走：' + notation;
+      }
       const detail = document.createElement('div');
       detail.className = 'offline-suggest-detail';
-      detail.textContent = '【' + engine + '】' + hintScoreText(score) +
-        (isBook ? ' · 开局库' : ' · 深度 ' + depth + ' · 评分 ' + score);
+      if (kind === 'mate' && score > 0) {
+        detail.textContent = '【' + engine + '】最佳着法：' + notation + ' — ' + score + ' 步将死对手';
+      } else {
+        detail.textContent = '【' + engine + '】' + hintScoreText(score) +
+          (isBook ? ' · 开局库' : ' · 深度 ' + depth + ' · 评分 ' + score);
+      }
       sg.appendChild(strong);
       sg.appendChild(detail);
+      /* 绝杀检测到 → 沙盘入口 */
+      if (kind === 'mate' && pv && pv.length) {
+        const btn = document.createElement('button');
+        btn.className = 'sandbox-open-btn';
+        btn.textContent = '⚔ 沙盘推演这条杀招';
+        btn.onclick = () => { SFX.S.click(); openSandbox(fen, pv, score); };
+        sg.appendChild(btn);
+      }
       el.className = 'offline-status ready';
       el.textContent = '👉 你的回合：照建议走子，并点击你实际选择的着法（先点你的子 → 再点落点）';
     };
@@ -397,7 +426,7 @@
           const j = await resp.json();
           if (j.legal && j.from != null && !stale()) {
             setEvalBar(j.score, j.kind, G.mySeat);
-            show(j.from, j.to, j.score, j.depth, '皮卡鱼 NNUE', false);
+            show(j.from, j.to, j.score, j.depth, '皮卡鱼 NNUE', false, j.kind, j.pv);
             pfOK = true;
             finish();
           }
@@ -799,6 +828,153 @@
     sg.appendChild(btn);
   }
 
+  /* ---------- 沙盘推演：独立棋盘，自动演示杀招 / 亲手试杀 ---------- */
+  let sbBoard = null;
+  let sb = null;               // { st, baseFen, pv, pvIdx, demo, trail, lastMove }
+  let sbDemoTimer = null;
+  let lastSandboxSeed = null;  // { fen, pv, mateIn } 最近一次检测到绝杀的局面
+
+  function sbEnsureBoard() {
+    if (!sbBoard) sbBoard = new Board($('sandbox-board'));
+    return sbBoard;
+  }
+  function openSandbox(fen, pv, mateIn) {
+    sbEnsureBoard();
+    sbBoard.onUserMove = (from, to) => {
+      if (!sb || sb.demo) return;
+      const res = sbApply(from, to);
+      if (res === 'over') return;
+      sbEngineReply();   // 用户落子后皮卡鱼防守
+    };
+    sbBoard.canInteract = () => !!sb && !sb.demo;
+    sb = { st: XQ.stateFromFEN(fen), baseFen: fen, pv: pv || [], pvIdx: 0, demo: false, trail: [], lastMove: null };
+    if (sbDemoTimer) { clearTimeout(sbDemoTimer); sbDemoTimer = null; }
+    $('sandbox-mate').textContent = mateIn ? `发现 ${mateIn} 步绝杀！` : '';
+    $('sb-demo').style.display = ''; $('sb-stop').style.display = 'none';
+    $('dialog-sandbox').classList.add('show');
+    sbRender(pv && pv.length ? '沙盘就绪：▶ 自动演示将逐着走出皮卡鱼的绝杀路线；也可以直接在棋盘上亲手试杀。' : '沙盘就绪：可直接在棋盘上落子模拟，皮卡鱼会逐着防守；或点「▶ 自动演示」看它互弈。');
+  }
+  function sbStopDemo() {
+    sb.demo = false;
+    if (sbDemoTimer) { clearTimeout(sbDemoTimer); sbDemoTimer = null; }
+    $('sb-demo').style.display = ''; $('sb-stop').style.display = 'none';
+  }
+  function sbUpdateTrail() {
+    const t = $('sandbox-trail');
+    if (!sb.trail.length) { t.innerHTML = '（尚无着法）'; return; }
+    let html = '';
+    for (let i = 0; i < sb.trail.length; i += 2) {
+      html += (i ? '<br>' : '') + '<b>' + (i / 2 + 1) + '.</b> ' + sb.trail[i] +
+        (sb.trail[i + 1] ? '　' + sb.trail[i + 1] : '');
+    }
+    t.innerHTML = html;
+    t.scrollTop = t.scrollHeight;
+  }
+  function sbRender(msg) {
+    sbBoard.setState(sb.st, { lastMove: sb.lastMove });
+    if (msg !== undefined) $('sandbox-status').textContent = msg;
+    sbUpdateTrail();
+  }
+  /* 在沙盘上走一步（带动画与音效）。返回 'over' | true | false */
+  function sbApply(from, to) {
+    const m = XQ.encode(from, to);
+    if (!XQ.legalMoves(sb.st).includes(m)) return false;
+    const notation = XQ.moveToChinese(sb.st, m);
+    const cap = sb.st.board[to];
+    XQ.make(sb.st, m);
+    sb.trail.push(notation);
+    sb.lastMove = { from, to };
+    sbBoard.setState(sb.st, { lastMove: sb.lastMove, animate: true, captured: cap });
+    sbUpdateTrail();
+    SFX.S.drop();
+    if (cap) setTimeout(() => SFX.S.capture(), 140);
+    const st1 = XQ.status(sb.st);
+    if (st1.over) {
+      sbStopDemo();
+      const winTxt = st1.winner === 0 ? '和棋' : (st1.winner === (G.mySeat || 1) ? '绝杀达成！🎉' : '被将死');
+      $('sandbox-status').textContent = '沙盘终局：' + (st1.reason === 'checkmate' ? winTxt + '（' + (XQ.detectMateType(sb.st) || '') + '）' : (st1.reason === 'stalemate' ? '困毙' : st1.reason));
+      SFX.S.mate();
+      return 'over';
+    }
+    return true;
+  }
+  function sbDemoStep() {
+    if (!sb || !sb.demo) return;
+    if (sb.pvIdx < sb.pv.length) {   // 跟随绝杀路线
+      const mv = sb.pv[sb.pvIdx++];
+      const res = sbApply(mv.from, mv.to);
+      if (res === 'over') return;
+      $('sandbox-status').textContent = '自动演示中… 第 ' + Math.ceil(sb.trail.length / 2) + ' 回合';
+      sbDemoTimer = setTimeout(sbDemoStep, 850);
+      return;
+    }
+    /* 路线播完：引擎对弈演示（双方都用皮卡鱼最佳应手） */
+    const fen = XQ.toFEN(sb.st);
+    fetch('/api/bestmove', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fen, movetime: 400 }),
+    }).then(r => r.json()).then(j => {
+      if (!sb || !sb.demo) return;
+      if (!j.legal || j.from == null) { sbStopDemo(); sbRender('演示结束'); return; }
+      const res = sbApply(j.from, j.to);
+      if (res === 'over') return;
+      sbDemoTimer = setTimeout(sbDemoStep, 650);
+    }).catch(() => { sbStopDemo(); sbRender('引擎请求失败，演示停止'); });
+  }
+  function sbStartDemo() {
+    if (!sb) return;
+    sb.demo = true; sb.pvIdx = 0;
+    $('sb-demo').style.display = 'none'; $('sb-stop').style.display = '';
+    $('sandbox-status').textContent = sb.pv.length ? '自动演示：皮卡鱼的绝杀路线…' : '自动演示：皮卡鱼双方互弈…';
+    sbDemoStep();
+  }
+  async function sbEngineReply() {
+    if (!sb || sb.demo) return;
+    const fen = XQ.toFEN(sb.st);
+    $('sandbox-status').textContent = '🤖 皮卡鱼防守中…';
+    try {
+      const resp = await fetch('/api/bestmove', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fen, movetime: 600 }),
+      });
+      const j = await resp.json();
+      if (!sb || sb.demo) return;
+      if (j.legal && j.from != null) {
+        setEvalBar(j.score, j.kind, G.mySeat);
+        const res = sbApply(j.from, j.to);
+        if (res === 'over') return;
+        if (j.kind === 'mate' && j.score > 0) $('sandbox-status').textContent = '⚠ 皮卡鱼宣告：' + j.score + ' 步内将死——沙盘里试试破解！';
+        else sbRender('轮到你，继续进攻');
+      } else {
+        sbStopDemo();
+        $('sandbox-status').textContent = '沙盘终局：无合法着法';
+      }
+    } catch (e) {
+      $('sandbox-status').textContent = '引擎请求失败（沙盘对弈需要服务器开启）';
+    }
+  }
+  function bindSandboxUI() {
+    $('sb-demo').onclick = () => { SFX.S.click(); sbStartDemo(); };
+    $('sb-stop').onclick = () => { SFX.S.click(); sbStopDemo(); sbRender('演示已停止，可继续手动落子'); };
+    $('sb-undo').onclick = () => {
+      SFX.S.click();
+      sbStopDemo();
+      if (!sb.trail.length) return;
+      XQ.unmake(sb.st);
+      sb.trail.pop();
+      sb.lastMove = null;
+      sbRender('已悔一步');
+    };
+    $('sb-reset').onclick = () => {
+      SFX.S.click();
+      sbStopDemo();
+      sb.st = XQ.stateFromFEN(sb.baseFen);
+      sb.trail = []; sb.pvIdx = 0; sb.lastMove = null;
+      sbRender('已重置到起始局面');
+    };
+    $('sb-close').onclick = () => { SFX.S.click(); sbStopDemo(); $('dialog-sandbox').classList.remove('show'); };
+  }
+
   function bindOfflineUI() {
     $('card-offline').onclick = () => { SFX.S.click(); $('dialog-offline').classList.add('show'); };
     $('offline-cancel').onclick = () => { SFX.S.click(); $('dialog-offline').classList.remove('show'); };
@@ -814,6 +990,7 @@
       }
     };
     $('btn-review-now').onclick = () => { SFX.S.click(); offlineReview(); };
+    $('btn-sandbox').onclick = () => { SFX.S.click(); openSandbox(XQ.toFEN(G.st), null, 0); };
     $('btn-history').onclick = () => { SFX.S.click(); openHistory(); };
     $('history-close').onclick = () => { SFX.S.click(); $('dialog-history').classList.remove('show'); };
     $('history-clear').onclick = () => {
@@ -1537,6 +1714,8 @@
       if (confirm('离开将放弃当前对局，确定？')) { G.net.leave(); G.netRoom = null; }
       else return;
     }
+    sbStopDemo && sbStopDemo();
+    $('dialog-sandbox') && $('dialog-sandbox').classList.remove('show');
     G.mode = 'lobby';
     hideEvalBar();
     G.thinkToken++;
@@ -1610,6 +1789,7 @@
   bindPvpUI();
   bindEndgameUI();
   bindOfflineUI();
+  bindSandboxUI();
   fitBoard();
   updateLobbyNet();
   renderStatsPanel();
