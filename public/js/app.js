@@ -1283,7 +1283,7 @@
       G.netRoom = msg.room;
       try { localStorage.setItem('xq-room', msg.room); } catch (e) {}
       $('room-code').textContent = msg.room;
-      $('room-code-hint').textContent = msg.status === 'waiting' ? '把房间码发给同事，加入后自动开局' : '房间已建立';
+      $('room-code-hint').textContent = msg.status === 'waiting' ? '把「🔗 复制邀请链接」发给朋友，打开即可加入' : '房间已建立';
     }
     redraw();
     renderNotation();
@@ -1294,6 +1294,15 @@
     const net = G.net;
 
     /* 电脑对手按钮：等待中显示（仅房主），开局后隐藏 */
+    const shareable = !/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+    function inviteUrl() { return location.origin + '/?room=' + (G.netRoom || $('room-code').textContent || ''); }
+    function refreshInvite(m) {
+      const btn = $('btn-invite');
+      if (!btn) return;
+      const waiting = m && m.status === 'waiting' && !(m.red && m.red.id && m.black && m.black.id);
+      const isHost = m && m.red && m.red.id && m.red.id === net.myId;
+      btn.style.display = (waiting && isHost && shareable) ? '' : 'none';
+    }
     function refreshAIButton(m) {
       const btn = $('btn-add-ai');
       if (!btn) return;
@@ -1302,7 +1311,21 @@
       btn.style.display = (waiting && isHost) ? '' : 'none';
     }
     net.on('created', refreshAIButton);
+    net.on('created', refreshInvite);
     net.on('room', refreshAIButton);
+    net.on('room', refreshInvite);
+    $('btn-invite').onclick = async () => {
+      const link = inviteUrl();
+      try { await navigator.clipboard.writeText(link); }
+      catch (e) {
+        const ta = document.createElement('textarea');
+        ta.value = link;
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); ta.remove();
+      }
+      $('btn-invite').textContent = '✓ 链接已复制，发给朋友吧';
+      setTimeout(() => { $('btn-invite').textContent = '🔗 复制邀请链接'; }, 2000);
+    };
     net.on('ai-added', (m) => chatSys('已添加电脑对手：' + (m.name || '皮卡鱼')));
     $('btn-add-ai').onclick = () => {
       SFX.S.click();
@@ -1311,8 +1334,8 @@
     };
 
     net.on('created', (m) => { syncFromSnapshot(m); chatSys('房间已创建，等待对手…'); });
-    net.on('joined', (m) => { syncFromSnapshot(m); refreshAIButton(m); });
-    net.on('rejoined', (m) => { syncFromSnapshot(m); chatSys('已重新连接'); refreshAIButton(m); });
+    net.on('joined', (m) => { syncFromSnapshot(m); refreshAIButton(m); refreshInvite(m); });
+    net.on('rejoined', (m) => { syncFromSnapshot(m); chatSys('已重新连接'); refreshAIButton(m); refreshInvite(m); });
     net.on('start', (m) => {
       const aiBtn = $('btn-add-ai');
       if (aiBtn) aiBtn.style.display = 'none';
@@ -1383,6 +1406,10 @@
     });
     net.on('error', (m) => {
       chatSys('⚠ ' + (m.error || '未知错误'));
+      if (G.viaInvite && /不存在|已满|结束/.test(m.error || '')) {
+        G.viaInvite = false;
+        try { FX.banner('房间不存在或已开始，请联系邀请人重新发送链接', { hold: 3000 }); } catch (e2) {}
+      }
       // 本地乐观走子被拒 → 回滚
       if (G.pendingBackup && /轮到|合法/.test(m.error || '')) {
         G.st = XQ.stateFromFEN(G.pendingBackup.fen);
@@ -1445,8 +1472,14 @@
     // 页面刷新后：若上次在对局房间，自动重连并恢复联机界面
     net.on('open', function onceAuto() {
       net.off && net.off('open', onceAuto);
+      const urlRoom = (() => { try { return (new URLSearchParams(location.search).get('room') || '').toUpperCase(); } catch (e) { return ''; } })();
       const savedRoom = (() => { try { return localStorage.getItem('xq-room'); } catch (e) { return null; } })();
-      if (savedRoom && !G.netRoom && G.mode !== 'pvp') {
+      const target = urlRoom || savedRoom;
+      if (urlRoom) {
+        G.viaInvite = true;
+        try { history.replaceState(null, '', location.pathname); } catch (e) {}   // 用完即清，防刷新循环
+      }
+      if (target && !G.netRoom && G.mode !== 'pvp') {
         // 恢复 pvp 场景（保存的房间在服务器上可能已结束/消失，凭 playerId 重连失败则留在原处）
         G.mode = 'pvp';
         hideEvalBar();
@@ -1791,6 +1824,18 @@
   bindSandboxUI();
   $('btn-sandbox').onclick = () => { SFX.S.click(); openSandbox(XQ.toFEN(G.st), null, 0); };   // 全局沙盘入口（所有对战模式）
   fitBoard();
+
+  /* 邀请链接：?room=XXXX 打开页面即自动连服务器并入房 */
+  const urlRoomParam = (() => {
+    try { return (new URLSearchParams(location.search).get('room') || '').toUpperCase(); } catch (e) { return ''; }
+  })();
+  if (urlRoomParam && /^[A-Z0-9]{4}$/.test(urlRoomParam)) {
+    G.myName = G.myName || localStorage.getItem('xq-name') || ('客人' + ((Math.random() * 900 + 100) | 0));
+    try { localStorage.setItem('xq-name', G.myName); } catch (e) {}
+    if (!G.net) { G.net = new Net(); bindNetEvents(); }
+    G.net.connect();
+    /* 连接 open 后，bindNetEvents 内的 onceAuto 会读取 ?room= 并恢复联机场景加入房间 */
+  }
   updateLobbyNet();
   renderStatsPanel();
   setPlayerCards();

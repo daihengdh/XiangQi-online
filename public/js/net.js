@@ -45,7 +45,10 @@
       ws.onmessage = (e) => {
         let msg;
         try { msg = JSON.parse(e.data); } catch (err) { return; }
-        if (msg.you) this.myId = msg.you;
+        if (msg.you) {
+          this.myId = msg.you;
+          try { sessionStorage.setItem('xq-pid', msg.you); } catch (err2) {}   // 刷新后凭 id 重连
+        }
         this.emit(msg.t, msg);
         this.emit('*', msg);
       };
@@ -94,7 +97,9 @@
       this.myName = name || this.myName;
       this.left = false;
       const o = { t: 'join', room: roomId.toUpperCase(), name: this.myName };
-      if (this.myId) o.playerId = this.myId;   // 断线后凭 id 重连
+      let pid = this.myId;
+      if (!pid) { try { pid = sessionStorage.getItem('xq-pid'); } catch (e) {} }
+      if (pid) o.playerId = pid;   // 刷新后凭 id 重连
       this.send(o);
     }
     quick(name) {
