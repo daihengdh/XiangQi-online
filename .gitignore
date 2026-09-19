@@ -1,0 +1,20 @@
+# 依赖与日志
+node_modules/
+*.log
+
+# 第三方引擎的大文件（exe 保留随仓库分发，NNUE 权重 50MB 请按下述说明单独获取）
+engines/pikafish/pikafish.nnue
+engines/pikafish/Pikafish.7z
+engines/pikafish/part-*
+
+# 外部克隆的第三方项目与本地测试产物
+external/
+.vs-qwen/
+
+# 系统文件
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# 内网穿透工具（tunnel.js 首次运行自动下载，无需入库）
+tools/cloudflared.exe

@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NNUE 是怎么实现的 · 象棋引擎里的"权重算法"</title>
+<style>
+  :root{
+    --ink:#2a1a0c; --paper:#f4e7cb; --card:#faf3e0; --line:#8a6432;
+    --gold:#b8860b; --red:#b03024; --green:#3f7d3f; --dim:#7a5c34;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Microsoft YaHei","PingFang SC",sans-serif;background:linear-gradient(180deg,#3a2410,#241505);color:var(--ink);line-height:1.75}
+  .wrap{max-width:960px;margin:0 auto;padding:24px 18px 80px}
+  header{background:linear-gradient(135deg,#f4e2bc,#d9b57c);border-radius:14px;padding:28px 30px;margin-bottom:22px;box-shadow:0 12px 40px rgba(0,0,0,.5);border:2px solid var(--line)}
+  header h1{margin:0 0 6px;font-size:30px;font-family:"KaiTi","STKaiti",serif;letter-spacing:2px}
+  header .sub{color:#5e3a12;font-size:15px}
+  header .badge{display:inline-block;background:var(--red);color:#fff;border-radius:6px;padding:2px 10px;font-size:13px;margin-left:8px;vertical-align:4px}
+  section{background:var(--card);border:2px solid var(--line);border-radius:12px;padding:22px 26px;margin-bottom:20px;box-shadow:0 6px 18px rgba(0,0,0,.35)}
+  h2{margin:0 0 12px;font-size:21px;font-family:"KaiTi","STKaiti",serif;color:var(--red);border-bottom:2px dashed var(--line);padding-bottom:8px}
+  h2 .n{display:inline-block;width:30px;height:30px;border-radius:50%;background:var(--gold);color:#fff;text-align:center;line-height:30px;font-size:16px;margin-right:8px;font-family:sans-serif}
+  p{margin:10px 0}
+  code,.mono{font-family:Consolas,Monaco,monospace;background:#efe2bd;border:1px solid #d8c391;border-radius:4px;padding:1px 6px;font-size:13.5px}
+  pre{background:#241a0e;color:#ffe9b8;border-radius:10px;padding:16px 18px;overflow-x:auto;font-family:Consolas,monospace;font-size:13.5px;line-height:1.6;border:1px solid #5e4318}
+  pre .k{color:#7fd67f} pre .c{color:#9a8a68} pre .s{color:#ffb0a0}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+  th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;background:#fdf6e4}
+  th{background:var(--gold);color:#fff}
+  tr td:first-child{font-weight:700}
+  .flow{display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;margin:16px 0}
+  .flow .node{flex:1 1 130px;background:#fff8e6;border:2px solid var(--gold);border-radius:10px;padding:10px 12px;text-align:center;min-width:120px}
+  .flow .node b{display:block;font-size:15px}
+  .flow .node small{color:var(--dim)}
+  .flow .arr{align-self:center;font-size:22px;color:var(--gold)}
+  .note{background:#fff3cd;border-left:4px solid var(--gold);border-radius:6px;padding:10px 14px;margin:12px 0;font-size:14px}
+  .warn{background:#ffe4e0;border-left:4px solid var(--red)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:700px){.grid2{grid-template-columns:1fr}}
+  /* 迷你累加器演示 */
+  .demo{background:#241a0e;border-radius:12px;padding:18px;color:#ffe9b8;border:1px solid #5e4318}
+  .demo .cells{display:flex;gap:6px;justify-content:center;margin:10px 0}
+  .demo .cell{width:44px;height:44px;border-radius:8px;background:#3d2c15;border:2px solid #6b4c22;display:flex;align-items:center;justify-content:center;font-size:22px;cursor:default}
+  .demo .cell.chariot{background:var(--red);border-color:#ff8a70;color:#fff;box-shadow:0 0 12px rgba(255,120,80,.6)}
+  .demo .bars{display:flex;gap:10px;align-items:flex-end;height:110px;margin:14px 0 4px;justify-content:center}
+  .demo .bar{width:34px;background:linear-gradient(180deg,#ffd76a,#b8860b);border-radius:4px 4px 0 0;position:relative;transition:height .35s}
+  .demo .bar span{position:absolute;bottom:-20px;left:50%;transform:translateX(-50%);font-size:11px;color:#c9a95e}
+  .demo .bar .v{position:absolute;top:-18px;width:100%;text-align:center;font-size:11px;color:#ffd76a}
+  .demo button{background:linear-gradient(180deg,#b8860b,#8a6508);border:1px solid #e8c96a;color:#fff;border-radius:8px;padding:8px 16px;font-size:14px;cursor:pointer;margin:4px}
+  .demo button:hover{filter:brightness(1.15)}
+  .demo .log{font-family:Consolas,monospace;font-size:12px;color:#9fe08a;min-height:44px;margin-top:10px;white-space:pre-wrap}
+  .diff{color:#7fd67f} .same{color:#9ab7e8}
+  footer{color:#c9a95e;text-align:center;font-size:13px;margin-top:26px;line-height:1.9}
+  footer a{color:#ffd76a}
+  .big{font-size:17px;font-weight:700;color:var(--red)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>NNUE：象棋引擎里的"带权重"算法<span class="badge">pikafish.nnue · 50MB</span></h1>
+  <div class="sub">你桌面上那个 960×750 的棋盘程序、以及你网页项目里即将接入的皮卡鱼（Pikafish），强就强在这个文件 —— 本文讲清它到底是什么、怎么一步步算出一步棋。</div>
+</header>
+
+<!-- 1 -->
+<section>
+  <h2><span class="n">1</span>一句话：它是什么</h2>
+  <p><b>NNUE</b>（<i>Efficiently Updatable Neural Network</i>，可高效增量更新的神经网络）是<b>替代"人工规则评估函数"的神经网络评估器</b>。注意它<b>不是</b> AlphaGo 那种"网络直接选步"的模型 —— 它只做一件事：<span class="big">拿到一个局面，输出一个分数（谁好、好多少）</span>。真正"思考"走哪步的，仍然是经典的 <code>alpha-beta</code> 搜索树。</p>
+  <div class="flow">
+    <div class="node"><b>搜索树</b><small>negamax + α-β剪枝<br>置换表 + 静态搜索</small></div>
+    <div class="arr">⇄</div>
+    <div class="node" style="border-color:var(--red)"><b>NNUE 评估</b><small>叶子节点局面<br>→ 一整个过程</small></div>
+    <div class="arr">→</div>
+    <div class="node"><b>一个分数</b><small>如 +137<br>（红方优 1.37 兵）</small></div>
+  </div>
+  <p>渊源：2018 年日本将棋程序<a href="https://ja.wikipedia.org/wiki/NNUE" style="color:var(--red)">YaneuraOu</a> 首创（作者中西貴裕/Yu Nasu），2020 年 Stockfish 引入后统治国际象棋；<b>皮卡鱼（Pikafish）把 Stockfish 框架移植到象棋规则上</b>，配合为象棋重做的网络与训练数据，成为公认最强开源象棋引擎。</p>
+</section>
+
+<!-- 2 -->
+<section>
+  <h2><span class="n">2</span>数据流水线：从一个 FEN 到一个分数</h2>
+  <div class="flow">
+    <div class="node"><b>棋盘局面</b><small>position fen ...<br>90 个格子的状态</small></div>
+    <div class="arr">→</div>
+    <div class="node"><b>特征索引</b><small>每个棋子生成一个<br>"激活特征"编号</small></div>
+    <div class="arr">→</div>
+    <div class="node"><b>特征变换层</b><small>22528 → 2560<br>查权重表做累加</small></div>
+    <div class="arr">→</div>
+    <div class="node"><b>隐藏层 ×2~3</b><small>ClippedReLU 激活<br>逐层压缩</small></div>
+    <div class="arr">→</div>
+    <div class="node" style="border-color:var(--red)"><b>评估分</b><small>一个带符号整数</small></div>
+  </div>
+  <p>每个箭头就是代码里的一层。整个网络是<b>前馈全连接</b>结构，没有任何"看棋盘图像"的卷积 —— 它吃的是结构化特征，速度因此极快（微秒级）。</p>
+</section>
+
+<!-- 3 -->
+<section>
+  <h2><span class="n">3</span>特征怎么编：一个棋子 = 一个索引</h2>
+  <p>象棋一共 <code>7 种棋子 × 2 色 = 14 种</code>，棋盘 90 格。NNUE 的核心编码思想是<b>"棋子 + 位置 + 本方将的位置"三元组合</b>：</p>
+  <pre><span class="c">// 伪代码：红方视角下，"黑马在(3,6)格、我的将在(9,4)格" → 一个特征编号</span>
+featureIndex = (pieceType, pieceColor, pieceSq, kingSq)   <span class="c">// HalfKAv2 式因子化</span></pre>
+  <p>同样的棋盘会生成<b>两套视角</b>（走子方视角 / 对手视角，相当于把棋盘镜像翻转），两套各自算一份 2560 维向量再拼接 —— 这样网络天然理解"轮到谁走、谁在进攻"。</p>
+  <div class="note">为什么要把"将的位置"编进特征？因为<b>所有子力的价值都相对王的位置而定</b>：同样的车，在将军方向上是攻子，在底线可能是守子。这个设计让 22528 维的"理论特征空间"虽大，却可以<b>因子化</b>为少量基础嵌入之和 —— 这也是 50MB 能装下网络的关键（见第 5 节）。</div>
+</section>
+
+<!-- 4 -->
+<section>
+  <h2><span class="n">4</span>"高效可更新"：名字里的精髓（试一试 ↓）</h2>
+  <p>搜索树每走一步棋，如果每次都把 90 个格子全部重新算一遍网络，就太慢了。NNUE 的杀招：<b>每个激活特征对应一个 2560 维的权重向量，网络第一层的输出 = 所有激活特征向量的<b>总和</b></b>。于是走一步棋只需：</p>
+  <pre><span class="c">// 车从 A 格走到 B 格：只改 2 个特征</span>
+accumulator -= W[<span class="s">"车在A格"</span>]   <span class="c">// 减去离开的</span>
+accumulator += W[<span class="s">"车在B格"</span>]   <span class="c">// 加上到达的</span>
+<span class="c">//吃子再减去被吃子的向量。O(1) 增量更新，配合 SIMD 一次加减 8~16 个分量</span></pre>
+  <p>下面的<b>迷你模拟器</b>用 8 维玩具权重演示这个过程（右边两列分别是"增量更新"和"暴力重算"的结果，应当永远一致 —— 这就是 NNUE 既快又正确的原理）：</p>
+  <div class="demo">
+    <div style="text-align:center;color:#c9a95e;font-size:13px">小棋盘：点按钮让"车"左右移动（权重向量是固定演示值）</div>
+    <div class="cells" id="d-cells"></div>
+    <div style="text-align:center">
+      <button id="d-left">← 左移</button>
+      <button id="d-right">右移 →</button>
+      <button id="d-reset">复位</button>
+    </div>
+    <div class="bars" id="d-bars"></div>
+    <div style="text-align:center;font-size:12px;color:#9a8a68">↑ 累加器 8 个分量的当前值（演示维度，真实网络是 2560 维）</div>
+    <div class="log" id="d-log"></div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section>
+  <h2><span class="n">5</span>pikafish.nnue 这 50MB 里装的是什么</h2>
+  <p>就是<b>训练好的量化权重</b>。网络先在 float32 下训练，再量化成整数存储以提速：</p>
+  <table>
+    <tr><th>部分</th><th>内容</th><th>存储方式</th></tr>
+    <tr><td>特征变换层</td><td>"特征索引 → 2560 维向量"的查询表（主体）</td><td>INT16 量化</td></tr>
+    <tr><td>隐藏层 ×2~3</td><td>2560 → 更窄层 → 更窄层 → 1 的连接权重与偏置</td><td>INT8 量化</td></tr>
+    <tr><td>元信息</td><td>版本号、特征集名、桶划分、Hash 校验</td><td>文件头</td></tr>
+  </table>
+  <p>理论组合特征有 22528 个，但每个组合的向量可以由<b>基础嵌入相加</b>得到（因子化），所以实际存储远小于 22528×2560；运行时引擎用 <code>AVX2 / AVX-512 / NEON</code> 指令一次加减 8~16 个整数分量，这就是"微秒级出分"的工程基础。</p>
+  <p>这些权重怎么来的：<b>先用引擎自我对弈产生数亿个局面</b>（Pikafish 官方数据来自 Pika Xiangqi Zero 团队），再用"最终对局结果 + 更强引擎的搜索评分"做监督目标训练网络，随后多轮"训练 → 对打 → 微调"。权重本身没有任何人类棋谱规则 —— 象棋知识全部隐含在那 2500 万个数字里。</p>
+</section>
+
+<!-- 6 -->
+<section>
+  <h2><span class="n">6</span>和搜索的关系：只换了"眼睛"，没换"大脑"</h2>
+  <p>皮卡鱼的搜索框架和你项目里那个手写引擎<b>同源同构</b>（都是 Stockfish 一脉的套路）：迭代加深、negamax、α-β 剪枝、置换表、杀手着法启发、静态搜索（quiescence）、空着裁剪。差别只有两点：</p>
+  <div class="grid2">
+    <div><p><b>① 评估器</b><br>内置引擎：人工规则（子力表 + 若干位置分，几十行代码）<br>皮卡鱼：NNUE（2500 万个训练出来的参数）</p></div>
+    <div><p><b>② 工程深度</b><br>多线程（LazySMP）、更精细的剪枝与时间管理、数十年 Stockfish 社区的打磨</p></div>
+  </div>
+  <div class="note warn">这就是为什么基准里 4:0 全被将死：<b>搜索思路一样，"看局面的眼睛"差了几个数量级</b>。NNUE 评估准 → 剪枝又快又狠 → 同样 1 秒能搜深得多（实测初始局面 800ms 搜到深度 27，内置引擎同期约 6~8 层）。</div>
+</section>
+
+<!-- 7 -->
+<section>
+  <h2><span class="n">7</span>在你的项目里怎么用它（UCI 会话实录）</h2>
+  <p>引擎是个独立进程，走标准 <b>UCI 协议</b>（文本行命令）。下面是本机实测记录（<code>tools/pikafish-uci.js</code> 可复现）：</p>
+  <pre><span class="k">></span> uci
+<span class="k">&lt;</span> id name Pikafish ...          <span class="c">// 引擎自报家门</span>
+<span class="k">&lt;</span> uciok
+<span class="k">></span> setoption name EvalFile value pikafish.nnue   <span class="c">// 指定权重文件 ← 50MB 在这里生效</span>
+<span class="k">></span> isready
+<span class="k">&lt;</span> readyok
+<span class="k">></span> position startpos
+<span class="k">></span> go movetime 800
+<span class="k">&lt;</span> info depth 27 score cp 27 ...                <span class="c">// 搜索过程：深度/评分</span>
+<span class="k">&lt;</span> bestmove g3g4 ponder e6e5                    <span class="c">// 最终着法（兵三进一）</span></pre>
+  <p>接入方式 = 服务器用子进程启动 <code>pikafish.exe</code>，网页每步把局面 FEN 发给服务器、服务器转发给引擎、拿 <code>bestmove</code> 回来。NNUE 权重由引擎自己加载，调用方完全不用懂神经网络。</p>
+</section>
+
+<!-- 8 -->
+<section>
+  <h2><span class="n">8</span>常见疑问</h2>
+  <table>
+    <tr><th>问题</th><th>回答</th></tr>
+    <tr><td>它联网吗？会自己学习吗？</td><td>不联网、不对局中学习。权重是<b>死文件</b>，训练在离线集群完成；引擎只做"读权重 + 推理"。</td></tr>
+    <tr><td>权重能自己换吗？</td><td>能。同一架构下换 <code>.nnue</code> 文件即换"棋风/棋力"，UCI 选项 <code>EvalFile</code> 指定路径。</td></tr>
+    <tr><td>为什么不用 GPU？</td><td>NNUE 是小而密的全连接网络，<b>CPU 的 SIMD 指令吞吐足够</b>，单机多核即可实时运行，省去 GPU 依赖 —— 这正是它优于大模型方案的地方。</td></tr>
+    <tr><td>为什么不直接用大模型选步？</td><td>搜索树每秒要评估几十万~上百万个局面，大模型单次推理延迟太高；NNUE 单次评估微秒级，是唯一能塞进搜索循环的档位。</td></tr>
+    <tr><td>那 50MB 文件删掉会怎样？</td><td>引擎直接报错退出 —— 没有权重它没有评估能力。</td></tr>
+  </table>
+</section>
+
+<footer>
+  事实来源：<a href="https://www.pikafish.com" target="_blank">皮卡鱼官方 Wiki（NNUE 章节）</a> ·
+  <a href="https://github.com/official-pikafish/Pikafish" target="_blank">official-pikafish/Pikafish</a>（GPL-3.0）·
+  <a href="https://www.chessprogramming.org/Stockfish_NNUE" target="_blank">Chess Programming Wiki: Stockfish NNUE</a> ·
+  本页涉及的实测数据来自项目 <code>tools/pikafish-uci.js</code> 与 <code>tools/bench-pikafish.js</code><br>
+  生成于 2026-09-19 · 适用于「象棋对战」项目（http://localhost:8080/nnue-intro.html）
+</footer>
+
+</div>
+<script>
+/* ===== 迷你累加器模拟器 ===== */
+(function(){
+  'use strict';
+  var N = 6, DIM = 8, pos = 2;
+  /* 固定伪随机权重：W[格] = 8维向量 */
+  var W = [], seed = 20260919;
+  function rnd(){ seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; }
+  for (var i = 0; i < N; i++){ var v = []; for (var d = 0; d < DIM; d++) v.push(Math.round((rnd()*2-1)*100)); W.push(v); }
+  var BIAS = []; for (var d2 = 0; d2 < DIM; d2++) BIAS.push(Math.round((rnd()*2-1)*40));
+
+  var acc = [], accFull = [];
+  function recompute(){ acc = []; for (var d = 0; d < DIM; d++){ var s = BIAS[d] + W[pos][d]; acc.push(s); } }
+  function recomputeFull(){ accFull = []; for (var d = 0; d < DIM; d++){ var s = BIAS[d] + W[pos][d]; accFull.push(s); } }
+  function clampInit(){ recompute(); accFull = acc.slice(); }
+  clampInit();
+
+  var cellsEl = document.getElementById('d-cells');
+  function drawCells(){
+    cellsEl.innerHTML = '';
+    for (var i = 0; i < N; i++){
+      var c = document.createElement('div');
+      c.className = 'cell' + (i === pos ? ' chariot' : '');
+      c.textContent = i === pos ? '車' : '';
+      cellsEl.appendChild(c);
+    }
+  }
+  var barsEl = document.getElementById('d-bars');
+  function drawBars(){
+    barsEl.innerHTML = '';
+    for (var d = 0; d < DIM; d++){
+      var b = document.createElement('div');
+      b.className = 'bar';
+      var h = 12 + Math.min(90, Math.abs(acc[d]) * 0.45);
+      b.style.height = h + 'px';
+      if (acc[d] < 0) b.style.background = 'linear-gradient(180deg,#8ab7ff,#3f6db7)';
+      var v = document.createElement('div'); v.className = 'v'; v.textContent = acc[d];
+      var s = document.createElement('span'); s.textContent = 'd' + d;
+      b.appendChild(v); b.appendChild(s);
+      barsEl.appendChild(b);
+    }
+  }
+  var logEl = document.getElementById('d-log');
+  var logs = [];
+  function log(t, cls){
+    logs.push('<span class="' + (cls||'') + '">' + t + '</span>');
+    if (logs.length > 3) logs.shift();
+    logEl.innerHTML = logs.join('<br>');
+  }
+  function move(delta){
+    var np = pos + delta;
+    if (np < 0 || np >= N){ log('到边界了，走不动'); return; }
+    /* 增量更新：只加减 2 个向量 */
+    for (var d = 0; d < DIM; d++) acc[d] += W[np][d] - W[pos][d];
+    var old = pos; pos = np;
+    recomputeFull();   /* 全量重算对照 */
+    var same = JSON.stringify(acc) === JSON.stringify(accFull);
+    drawCells(); drawBars();
+    var wIn = W[np][Math.floor(DIM/2)], wOut = W[old][Math.floor(DIM/2)];
+    log('增量: acc += W[' + np + '] − W[' + old + ']　' +
+        '<span class="diff">增量结果=看条形图</span>　<span class="' + (same ? 'same' : 'diff') + '">全量重算核对: ' + (same ? '一致 ✓' : '不一致 ✗') + '</span>');
+  }
+  document.getElementById('d-left').onclick = function(){ move(-1); };
+  document.getElementById('d-right').onclick = function(){ move(1); };
+  document.getElementById('d-reset').onclick = function(){ pos = 2; clampInit(); drawCells(); drawBars(); logs = []; log('已复位'); };
+  drawCells(); drawBars();
+})();
+</script>
+</body>
+</html>

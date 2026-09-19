@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>象棋对战 · 人机 / 局域网联机</title>
+<link rel="stylesheet" href="/css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='44' fill='%23f4e2bc' stroke='%23b03024' stroke-width='6'/><text x='50' y='66' font-size='52' text-anchor='middle' fill='%23c0271d' font-family='KaiTi'>帥</text></svg>">
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- 顶栏 -->
+  <div class="topbar">
+    <div class="logo">象棋<span class="red">对战</span></div>
+    <div class="mode-tag" id="mode-tag">大厅</div>
+    <div class="spacer"></div>
+    <button id="btn-sound" title="音效开关">🔊 音效</button>
+    <button id="btn-back" style="display:none">⬅ 返回大厅</button>
+  </div>
+
+  <!-- 大厅 -->
+  <div class="scene active" id="scene-lobby">
+    <div>
+      <div class="lobby-title">象 棋 对 战</div>
+      <div class="lobby-sub">人机对战 · 局域网联机 · 残局闯关 · 线下辅助 · 五档棋力</div>
+    </div>
+    <div class="menu-cards">
+      <div class="menu-card" id="card-pve">
+        <div class="icon">🤖</div>
+        <div class="t">人机对战</div>
+        <div class="d">内置 AI 引擎<br>入门 / 初级 / 中级 / 高级 / 大师<br>五档难度任选</div>
+      </div>
+      <div class="menu-card" id="card-pvp">
+        <div class="icon">🌐</div>
+        <div class="t">局域网联机</div>
+        <div class="d">同一网络下与同事对弈<br>快速匹配 / 房间码邀请<br>断线自动重连</div>
+      </div>
+      <div class="menu-card" id="card-endgame">
+        <div class="icon">🧩</div>
+        <div class="t">残局闯关</div>
+        <div class="d">十大经典杀法关卡<br>由浅入深 逐步解锁<br>练成绝杀高手</div>
+      </div>
+      <div class="menu-card" id="card-offline">
+        <div class="icon">♟</div>
+        <div class="t">线下对战</div>
+        <div class="d">面对面实战辅助<br>点一下录入对方着法<br>最强 AI 为你支招</div>
+      </div>
+    </div>
+
+    <!-- 大厅战绩面板 -->
+    <div class="stats-panel" id="stats-panel">
+      <div class="stats-title">📊 <span id="stats-name">我的战绩</span></div>
+      <div class="stats-grid">
+        <div class="stats-item">
+          <div class="stats-k">人机对战</div>
+          <div class="stats-v"><b id="stat-pve">0胜0负</b><span id="stat-pve-rate" class="stats-rate">—</span></div>
+        </div>
+        <div class="stats-item">
+          <div class="stats-k">局域网联机</div>
+          <div class="stats-v"><b id="stat-pvp">0胜0负</b><span id="stat-pvp-rate" class="stats-rate">—</span></div>
+        </div>
+        <div class="stats-item">
+          <div class="stats-k">残局闯关</div>
+          <div class="stats-v"><b id="stat-eg">通过0关</b><span id="stat-eg-rate" class="stats-rate">—</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="lobby-net-tip">服务器地址：<span id="lobby-server-addr"></span> · 状态：<span id="lobby-net-state" class="net-status">检测中…</span></div>
+    <div class="lobby-name-row">
+      <label style="line-height:38px">昵称：</label>
+      <input id="lobby-name" maxlength="12" placeholder="输入你的昵称">
+    </div>
+  </div>
+
+  <!-- 对局页（人机与联机共用） -->
+  <div class="scene" id="scene-game">
+    <div id="board-wrap">
+      <div id="board-scale">
+        <canvas id="board"></canvas>
+        <div id="evalbar" style="display:none">
+          <div id="evalbar-red"></div>
+        </div>
+      </div>
+      <div id="evalbar-tag" style="display:none">均</div>
+    </div>
+
+    <div class="side">
+      <!-- 残局关卡提示条 -->
+      <div class="eg-bar" id="eg-bar">
+        <div class="eg-bar-title" id="eg-bar-title">残局</div>
+        <div class="eg-bar-tip" id="eg-bar-tip">提示</div>
+      </div>
+
+      <!-- 对方信息 -->
+      <div class="panel player-card" id="opp-card">
+        <div class="avatar" id="opp-avatar">将</div>
+        <div class="info">
+          <div class="name" id="opp-name">等待中</div>
+          <div class="sub" id="opp-sub"></div>
+        </div>
+        <div class="clock" id="opp-clock">15:00</div>
+      </div>
+
+      <!-- 人机：难度面板（联机时隐藏） -->
+      <div class="panel" id="ai-level-panel">
+        <h3>棋力选择</h3>
+        <div class="ai-levels">
+          <div class="lv2row">
+            <button data-lv="1">入门</button>
+            <button data-lv="2" class="sel">初级</button>
+            <button data-lv="3">中级</button>
+          </div>
+          <div class="lv2row">
+            <button data-lv="4">高级</button>
+            <button data-lv="5">大师</button>
+            <button id="btn-flip">换边</button>
+          </div>
+        </div>
+        <div class="ai-desc" id="ai-desc">初级：会主动吃子送子，偶尔失误。</div>
+        <div class="ai-thinking" id="ai-thinking"><span class="dots">AI 思考中</span></div>
+        <div id="ai-info"></div>
+      </div>
+
+      <!-- 线下对战：辅助面板（其他模式隐藏） -->
+      <div class="panel" id="offline-panel" style="display:none">
+        <div class="panel-title">线下对战辅助</div>
+        <div class="autopilot-row">
+          <label><input type="checkbox" id="autopilot" checked><b>🤖 皮卡鱼自动替我走子</b></label>
+          <div class="autopilot-tip">勾选：轮到你时皮卡鱼直接在页面走棋，照着落子即可；取消：只给建议，自己的棋手动录入</div>
+        </div>
+        <div class="offline-status" id="offline-status">准备中…</div>
+        <div class="offline-suggest" id="offline-suggest"></div>
+        <div class="offline-tip">对手走子后，点击他的棋子 → 再点落点录入；轮到你时皮卡鱼自动走出最佳着法（可随时勾选/取消自动）。</div>
+        <div class="actions" style="margin-top:10px;grid-template-columns:1fr 1fr">
+          <button id="btn-review-now" style="grid-column:1 / -1">📊 复盘分析（当前对局）</button>
+          <select id="review-speed">
+            <option value="200">复盘速度：快速 0.2s/步</option>
+            <option value="350" selected>复盘速度：标准 0.35s/步</option>
+            <option value="1000">复盘速度：深算 1s/步</option>
+          </select>
+          <button id="btn-history">📜 历史对局</button>
+        </div>
+      </div>
+
+      <!-- 联机：房间面板（人机时隐藏） -->
+      <div class="panel" id="net-panel" style="display:none">
+        <div class="panel-title">房间信息</div>
+        <div class="room-code-show" id="room-code">----</div>
+        <div class="room-code-hint" id="room-code-hint">等待对手加入…</div>
+        <div class="net-status" id="net-status">未连接</div>
+        <div class="actions" style="margin-top:10px">
+          <button id="btn-add-ai" style="grid-column:1 / -1;display:none">🤖 添加皮卡鱼对手（人机联机）</button>
+        </div>
+        <div class="room-row">
+          <input id="room-join-input" maxlength="4" placeholder="房间码">
+          <button id="btn-join-room">加入</button>
+        </div>
+      </div>
+
+      <!-- 求和/悔棋确认条（联机） -->
+      <div class="confirm-bar" id="confirm-bar">
+        <div class="txt" id="confirm-txt"></div>
+        <button id="confirm-yes">同意</button>
+        <button id="confirm-no">拒绝</button>
+      </div>
+
+      <!-- 棋谱 -->
+      <div class="panel notation-panel">
+        <div class="panel-title">棋谱</div>
+        <div id="notation"><div class="no-move">对局尚未开始</div></div>
+      </div>
+
+      <!-- 操作 -->
+      <div class="panel">
+        <div class="actions">
+          <button id="btn-undo">↩ 悔棋</button>
+          <button id="btn-restart">🔄 新一局</button>
+          <button id="btn-resign" class="danger">🏳 认输</button>
+          <button id="btn-draw">🤝 求和</button>
+          <button id="btn-hint" class="hint">💡 支招</button>
+        </div>
+      </div>
+
+      <!-- 聊天（联机） -->
+      <div class="panel" id="chat-panel" style="display:none">
+        <div class="panel-title">畅聊</div>
+        <div id="chat-log"></div>
+        <div class="chat-box" style="margin-top:8px">
+          <input id="chat-input" maxlength="100" placeholder="说点什么…">
+          <button id="chat-send">发送</button>
+        </div>
+      </div>
+
+      <!-- 我方信息 -->
+      <div class="panel player-card red" id="me-card">
+        <div class="avatar" id="me-avatar">帅</div>
+        <div class="info">
+          <div class="name" id="me-name">你</div>
+          <div class="sub" id="me-sub"></div>
+        </div>
+        <div class="clock" id="me-clock">15:00</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 特效层 -->
+  <div id="fx-layer"></div>
+
+  <!-- 回放模式悬浮条 -->
+  <div id="replay-bar" style="display:none">
+    <button id="rp-prev">◀</button>
+    <span id="rp-label">回放</span>
+    <button id="rp-next">▶</button>
+    <button id="rp-report">📊 报告</button>
+    <button id="rp-exit">✕ 退出回放</button>
+  </div>
+
+  <!-- 人机设置弹窗 -->
+  <div class="overlay" id="dialog-pve">
+    <div class="dialog">
+      <h2>人机对战</h2>
+      <div class="row">
+        <label>执子</label>
+        <select id="pve-side">
+          <option value="red" selected>先手 · 红方</option>
+          <option value="black">后手 · 黑方</option>
+          <option value="random">随机</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>AI 棋力</label>
+        <select id="pve-level">
+          <option value="1">入门 —— 刚学会规则</option>
+          <option value="2" selected>初级 —— 会吃子，常失误</option>
+          <option value="3">中级 —— 有战术意识</option>
+          <option value="4">高级 —— 稳健老练</option>
+          <option value="5">大师 —— 全力搜索，谨慎挑战</option>
+        </select>
+      </div>
+      <div class="btns">
+        <button id="pve-cancel">返回</button>
+        <button id="pve-start" class="primary">开始对局</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 残局关卡选择弹窗 -->
+  <div class="overlay" id="dialog-endgame">
+    <div class="dialog">
+      <h2>残局闯关</h2>
+      <div class="eg-tip-bar">红方先行 · 将死黑方即通关 · 换昵称战绩独立记录</div>
+      <div class="eg-list" id="eg-list"></div>
+      <div class="btns">
+        <button id="eg-cancel">返回</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 复盘报告弹窗 -->
+  <div class="overlay" id="dialog-review">
+    <div class="dialog review-dialog">
+      <h2>📊 对局复盘</h2>
+      <div id="review-body">
+        <div id="review-progress" class="review-progress">准备分析…</div>
+      </div>
+      <div class="btns">
+        <button id="review-copy">📋 复制战报</button>
+        <button id="review-close">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 历史对局弹窗 -->
+  <div class="overlay" id="dialog-history">
+    <div class="dialog review-dialog">
+      <h2>📜 我的历史对局</h2>
+      <div id="history-body"></div>
+      <div class="btns">
+        <button id="history-clear">🗑 清空</button>
+        <button id="history-close">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 线下对战设置弹窗 -->
+  <div class="overlay" id="dialog-offline">
+    <div class="dialog">
+      <h2>线下对战辅助</h2>
+      <div class="row">
+        <label>我执</label>
+        <select id="offline-side">
+          <option value="red" selected>先手 · 红方</option>
+          <option value="black">后手 · 黑方</option>
+        </select>
+      </div>
+      <div class="room-code-hint" style="margin-top:10px">
+        和朋友面对面下实体棋：他走一步，你在屏幕棋盘上点击「起点 → 落点」录入；<br>
+        轮到你时，最强 AI 自动算出最佳着法并标在棋盘上，照着走即可。屏幕始终与实体棋盘同步。
+      </div>
+      <div class="btns">
+        <button id="offline-cancel">返回</button>
+        <button id="offline-start" class="primary">开始对局</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 联机设置弹窗 -->
+  <div class="overlay" id="dialog-pvp">
+    <div class="dialog">
+      <h2>局域网联机</h2>
+      <div class="row">
+        <label>昵称</label>
+        <input type="text" id="pvp-name" maxlength="12" placeholder="你的昵称">
+      </div>
+      <div class="btns" style="flex-direction:column">
+        <button id="pvp-quick" class="primary">⚡ 快速匹配</button>
+        <button id="pvp-create">🏠 创建房间（生成房间码）</button>
+        <button id="pvp-join-show">🔑 输入房间码加入</button>
+      </div>
+      <div class="row" id="pvp-join-row" style="display:none">
+        <label>房间码</label>
+        <input type="text" id="pvp-room" maxlength="4" placeholder="如 3F7K" style="text-transform:uppercase;letter-spacing:4px;text-align:center">
+        <button id="pvp-join" style="padding:8px 18px">加入</button>
+      </div>
+      <div class="room-code-hint" style="margin-top:10px">把房间码发给同一局域网的同事即可对弈</div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/js/rules.js"></script>
+<script src="/js/engine.js"></script>
+<script src="/js/endgames.js"></script>
+<script src="/js/stats.js"></script>
+<script src="/js/board-ui.js"></script>
+<script src="/js/effects.js"></script>
+<script src="/js/audio.js"></script>
+<script src="/js/net.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
