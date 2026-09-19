@@ -990,7 +990,6 @@
       }
     };
     $('btn-review-now').onclick = () => { SFX.S.click(); offlineReview(); };
-    $('btn-sandbox').onclick = () => { SFX.S.click(); openSandbox(XQ.toFEN(G.st), null, 0); };
     $('btn-history').onclick = () => { SFX.S.click(); openHistory(); };
     $('history-close').onclick = () => { SFX.S.click(); $('dialog-history').classList.remove('show'); };
     $('history-clear').onclick = () => {
@@ -1790,6 +1789,7 @@
   bindEndgameUI();
   bindOfflineUI();
   bindSandboxUI();
+  $('btn-sandbox').onclick = () => { SFX.S.click(); openSandbox(XQ.toFEN(G.st), null, 0); };   // 全局沙盘入口（所有对战模式）
   fitBoard();
   updateLobbyNet();
   renderStatsPanel();
