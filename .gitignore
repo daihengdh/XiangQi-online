@@ -17,3 +17,6 @@ desktop.ini
 
 # 内网穿透工具（tunnel.js 首次运行自动下载，无需入库）
 tools/cloudflared.exe
+
+# 隧道临时地址（每次启动变化）
+.tunnel-url
