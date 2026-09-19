@@ -2,8 +2,7 @@
 node_modules/
 *.log
 
-# 第三方引擎的大文件（exe 保留随仓库分发，NNUE 权重 50MB 请按下述说明单独获取）
-engines/pikafish/pikafish.nnue
+# 第三方引擎大文件（exe 与 NNUE 权重随仓库分发，开箱即用；官方 7z 安装包与分块残留不入库）
 engines/pikafish/Pikafish.7z
 engines/pikafish/part-*
 

@@ -174,7 +174,7 @@ node test/test-server.js    # 11 通过
 
 | 目录 | 引擎 | 说明 | 许可 |
 |---|---|---|---|
-| `engines/pikafish/` | **Pikafish（皮卡鱼）** | 目前最强开源象棋引擎（NNUE 神经网络，Stockfish 同源），含 Windows exe + NNUE 权重，UCI 协议 | GPL-3.0 |
+| `engines/pikafish/` | **Pikafish（皮卡鱼）** | 目前最强开源象棋引擎（NNUE 神经网络，Stockfish 同源），含 Windows exe + NNUE 权重（已随仓库分发，克隆即用），UCI 协议 | GPL-3.0 |
 | `engines/xqwlight/` | **XQWLight（象棋巫师轻量版）** | 纯 JavaScript 引擎（2012），可直接跑在浏览器里，自带开局库 | GPL-2.0 |
 
 来源：Pikafish 官方 release（github.com/official-pikafish/Pikafish）；exe+NNUE 文件取自 liutq25/ChineseChess 仓库（省去官方 7z 分发）。xqwlight 来自 xqbase/xqwlight。
