@@ -714,3 +714,22 @@ body {
   #evalbar { display: none !important; }
   #evalbar-tag { display: none !important; }
 }
+
+/* ---------- 移动端特效与滚动（追加于末尾，覆盖上方桌面规则） ---------- */
+@media (max-width: 900px) {
+  /* 页面允许滚动（桌面端 body 锁定是布局需要，手机必须解开） */
+  html { height: auto; overflow: auto; }
+  body { height: auto; overflow: auto; }
+  .scene { overflow: visible; }
+
+  /* 绝杀/将军大字：按视口宽度缩放，任何屏宽都完整居中 */
+  .fx-banner { font-size: min(120px, 23vw); letter-spacing: min(16px, 3vw); }
+  .fx-banner.big { font-size: min(150px, 29vw); }
+  .fx-banner-sub { font-size: min(26px, 5.6vw); letter-spacing: min(8px, 1.5vw); margin-top: -4px; }
+  .fx-collision { font-size: min(170px, 33vw); }
+  .fx-seal { font-size: min(96px, 16vw); letter-spacing: min(14px, 2.2vw); }
+  .fx-mate-sym, .fx-mate-sym-r { font-size: min(150px, 29vw); }
+  .fx-result-title { font-size: min(58px, 12.5vw); letter-spacing: min(10px, 1.8vw); }
+  .fx-result { max-width: 92vw; }
+  .fx-result-btns { flex-wrap: wrap; }
+}
