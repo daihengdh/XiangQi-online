@@ -25,26 +25,7 @@ body {
 .app { display: flex; flex-direction: column; height: 100vh; min-width: 900px; }
 
 /* 手机/窄屏适配 */
-@media (max-width: 900px) {
-  .app { min-width: 0; height: auto; min-height: 100vh; }
-  .topbar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
-  .topbar .logo { font-size: 20px; }
-  #scene-lobby { padding: 20px 12px; }
-  .lobby-title { font-size: 34px; letter-spacing: 4px; }
-  .menu-cards { flex-wrap: wrap; justify-content: center; gap: 14px; }
-  .menu-card { width: 150px; min-width: 150px; padding: 18px 12px; }
-  .menu-card .icon { font-size: 40px; }
-  .stats-grid { flex-wrap: wrap; gap: 10px; }
-  #scene-game { flex-direction: column; align-items: center; padding: 8px; gap: 10px; }
-  .side { width: 100%; max-width: 620px; }
-  #board-wrap { align-self: center; }
-  .review-dialog { width: 96%; max-width: 96%; }
-  .review-list { max-height: 40vh; }
-  #replay-bar { width: calc(100% - 16px); flex-wrap: wrap; justify-content: center; }
-  #replay-bar #rp-label { min-width: 0; }
-  #evalbar { display: none !important; }
-  #evalbar-tag { display: none !important; }
-}
+
 
 /* ---------- 顶栏 ---------- */
 .topbar {
@@ -705,4 +686,31 @@ body {
   30%  { transform: rotate(-6deg) scale(1.08); }
   80%  { transform: rotate(-6deg) scale(1.02); opacity: 1; }
   100% { transform: rotate(-6deg) scale(1.1); opacity: 0; }
+}
+
+/* ---------- 手机/窄屏适配（置于末尾以覆盖基础规则） ---------- */
+@media (max-width: 900px) {
+  .app { min-width: 0; height: auto; min-height: 100vh; }
+  .topbar { flex-wrap: wrap; gap: 6px; padding: 8px 10px; }
+  .topbar .logo { font-size: 20px; }
+  #scene-lobby { padding: 20px 12px; }
+  .lobby-title { font-size: 34px; letter-spacing: 4px; }
+  .menu-cards { flex-wrap: wrap; justify-content: center; gap: 14px; }
+  .menu-card { width: 150px; min-width: 150px; padding: 18px 12px; }
+  .menu-card .icon { font-size: 40px; }
+  .stats-grid { flex-wrap: wrap; gap: 10px; }
+  #scene-game { flex-direction: column; align-items: center; padding: 8px; gap: 10px; }
+  .side { width: 100%; max-width: 620px; }
+  .side, .side * { box-sizing: border-box; }
+  #scene-game { padding: 10px 12px; }
+  .stats-panel { min-width: 0; width: 100%; }
+  .player-card .name { font-size: 14px; }
+  .side, .side * { box-sizing: border-box; }   /* 修正窄屏下面板内边距导致的溢出 */
+  #board-wrap { align-self: center; }
+  .review-dialog { width: 96%; max-width: 96%; }
+  .review-list { max-height: 40vh; }
+  #replay-bar { width: calc(100% - 16px); flex-wrap: wrap; justify-content: center; }
+  #replay-bar #rp-label { min-width: 0; }
+  #evalbar { display: none !important; }
+  #evalbar-tag { display: none !important; }
 }
