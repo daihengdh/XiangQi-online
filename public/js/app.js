@@ -369,7 +369,7 @@
             return;
           }
         } else {
-          detail.textContent = '【' + engine + '】深度 ' + depth + ' · 评分 ' + score + ' — 请照此在实体棋盘落子';
+          detail.textContent = '【' + engine + '】深度 ' + depth + ' · 评分 ' + score + ' · 胜率 ' + winRateText(score) + '% — 已照此在实体棋盘落子';
         }
         sg.appendChild(strong);
         sg.appendChild(detail);
@@ -391,7 +391,7 @@
         detail.textContent = '【' + engine + '】最佳着法：' + notation + ' — ' + score + ' 步将死对手';
       } else {
         detail.textContent = '【' + engine + '】' + hintScoreText(score) +
-          (isBook ? ' · 开局库' : ' · 深度 ' + depth + ' · 评分 ' + score);
+          (isBook ? ' · 开局库' : ' · 深度 ' + depth + ' · 评分 ' + score) + ' · 胜率 ' + winRateText(score) + '%';
       }
       sg.appendChild(strong);
       sg.appendChild(detail);
@@ -807,11 +807,23 @@
     if (moverSeat === -1) frac = 1 - frac;   // 评分是行棋方视角 → 换算成红方占比
     frac = Math.max(0.04, Math.min(0.96, frac));
     $('evalbar-red').style.height = Math.round(frac * 608) + 'px';
-    $('evalbar-tag').textContent = frac > 0.62 ? '红优' : frac < 0.38 ? '黑优' : '均';
+    const pct = Math.round(frac * 100);
+    const tag = $('evalbar-tag');
+    tag.style.display = 'block';
+    if (frac > 0.62) { tag.textContent = '红优 ' + pct + '%'; tag.style.color = '#e0654f'; }
+    else if (frac < 0.38) { tag.textContent = '黑优 ' + (100 - pct) + '%'; tag.style.color = '#9fb4d8'; }
+    else { tag.textContent = '均 ' + Math.max(pct, 100 - pct) + '%'; tag.style.color = '#c9a95e'; }
+  }
+  /* 引擎分（行棋方视角）→ 行棋方胜率百分比文本 */
+  function winRateText(score) {
+    const share = Math.abs(score || 0) > 9000 ? 0.99 : 1 / (1 + Math.exp(-(score || 0) / 400));
+    return Math.round(share * 100);
   }
   function hideEvalBar() {
     const bar = $('evalbar');
     if (bar) bar.style.display = 'none';
+    const tag = $('evalbar-tag');
+    if (tag) tag.style.display = 'none';
   }
 
   /* ---------- 自动替走暂停（悔棋后） ---------- */
@@ -1829,10 +1841,13 @@
           if (j.legal && j.from != null && !G.over && XQ.toFEN(G.st) === fen) {
             board.showHint(j.from, j.to);
             const notation = j.notation || XQ.moveToChinese(G.st, XQ.encode(j.from, j.to));
+            // 顺带点亮胜率条：联机/人机点支招也能看到局势走向
+            $('evalbar').style.display = 'block';
+            setEvalBar(j.score, j.kind, G.mySeat);
             if (G.mode === 'pve' || G.mode === 'endgame') {
-              $('ai-info').textContent = '💡 支招【皮卡鱼】：' + notation + '（' + hintScoreText(j.score) + '，深度 ' + j.depth + '）';
+              $('ai-info').textContent = '💡 支招【皮卡鱼】：' + notation + '（' + hintScoreText(j.score) + ' · 胜率 ' + winRateText(j.score) + '% · 深度 ' + j.depth + '）';
             } else {
-              chatSys('💡 支招【皮卡鱼】：' + notation + '（' + hintScoreText(j.score) + '）');
+              chatSys('💡 支招【皮卡鱼】：' + notation + '（' + hintScoreText(j.score) + ' · 胜率 ' + winRateText(j.score) + '%）');
             }
             SFX.S.ask();
             done = true;
@@ -1847,6 +1862,8 @@
       if (G.over || XQ.toFEN(G.st) !== fen) return;
       board.showHint(r.move.from, r.move.to);
       const notation = XQ.moveToChinese(G.st, (r.move.from << 7) | r.move.to);
+      $('evalbar').style.display = 'block';
+      setEvalBar(r.score, 'cp', G.mySeat);
       if (G.mode === 'pve' || G.mode === 'endgame') {
         $('ai-info').textContent = '💡 支招【内置】：' + notation + '（' + hintScoreText(r.score) + '，深度 ' + r.depth + '）';
       } else {
