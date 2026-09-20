@@ -808,11 +808,10 @@
     frac = Math.max(0.04, Math.min(0.96, frac));
     $('evalbar-red').style.height = Math.round(frac * 608) + 'px';
     const pct = Math.round(frac * 100);
-    const tag = $('evalbar-tag');
-    tag.style.display = 'block';
-    if (frac > 0.62) { tag.textContent = '红优 ' + pct + '%'; tag.style.color = '#e0654f'; }
-    else if (frac < 0.38) { tag.textContent = '黑优 ' + (100 - pct) + '%'; tag.style.color = '#9fb4d8'; }
-    else { tag.textContent = '均 ' + Math.max(pct, 100 - pct) + '%'; tag.style.color = '#c9a95e'; }
+    const t1 = $('evalbar-tag'), t2 = $('evalbar-tag2');
+    t1.style.display = 'block'; t2.style.display = 'block';
+    t1.textContent = '黑 ' + (100 - pct) + '%';   // 条上方 = 黑方（上暗下红）
+    t2.textContent = '红 ' + pct + '%';           // 条下方 = 红方
   }
   /* 引擎分（行棋方视角）→ 行棋方胜率百分比文本 */
   function winRateText(score) {
@@ -822,8 +821,10 @@
   function hideEvalBar() {
     const bar = $('evalbar');
     if (bar) bar.style.display = 'none';
-    const tag = $('evalbar-tag');
-    if (tag) tag.style.display = 'none';
+    ['evalbar-tag', 'evalbar-tag2'].forEach(id => {
+      const t = $(id);
+      if (t) t.style.display = 'none';
+    });
   }
 
   /* ---------- 自动替走暂停（悔棋后） ---------- */

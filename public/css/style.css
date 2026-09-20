@@ -250,9 +250,8 @@ body {
 .offline-suggest { min-height: 30px; margin-top: 4px; }
 .offline-suggest .offline-suggest-move {
   font-family: "KaiTi", "STKaiti", "Noto Serif SC", serif;
-  font-size: 24px; font-weight: 700; color: #ffcf5c; letter-spacing: 2px;
+  font-size: 24px; font-weight: 700; color: #a42617; letter-spacing: 2px;
   line-height: 1.6;   /* KaiTi normal 行高过小，字形会被裁切 */
-  text-shadow: 0 0 12px rgba(255, 190, 60, .35);
 }
 .offline-suggest .offline-suggest-detail { font-size: 15px; font-weight: 600; color: #6b4419; margin-top: 4px; line-height: 1.5; }
 .offline-tip { font-size: 12px; color: #7a5c34; line-height: 1.7; margin-top: 8px; border-top: 1px dashed #6b4c22; padding-top: 8px; }
@@ -319,8 +318,13 @@ body {
   background: linear-gradient(180deg, #e05545, #8f2318); transition: height .7s ease;
 }
 #evalbar-tag {
-  position: absolute; left: -55px; top: 16px; width: 64px; text-align: center;
-  color: #c9a95e; font-size: 13px; font-weight: 700;
+  position: absolute; left: -55px; top: 14px; width: 64px; text-align: center;
+  color: #b9c2d4; font-size: 13px; font-weight: 700;
+  font-family: "Microsoft YaHei", sans-serif; text-shadow: 0 1px 3px rgba(0,0,0,.55);
+}
+#evalbar-tag2 {
+  position: absolute; left: -55px; top: 660px; width: 64px; text-align: center;
+  color: #ff8a75; font-size: 13px; font-weight: 700;
   font-family: "Microsoft YaHei", sans-serif; text-shadow: 0 1px 3px rgba(0,0,0,.55);
 }
 
@@ -716,6 +720,7 @@ body {
   #replay-bar #rp-label { min-width: 0; }
   #evalbar { display: none !important; }
   #evalbar-tag { display: none !important; }
+  #evalbar-tag2 { display: none !important; }
 }
 
 /* ---------- 移动端特效与滚动（追加于末尾，覆盖上方桌面规则） ---------- */
