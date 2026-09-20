@@ -20,3 +20,7 @@ tools/cloudflared.exe
 
 # 隧道临时地址（每次启动变化）
 .tunnel-url
+
+# 用户数据库（运行时生成）
+users.db
+users.db-journal

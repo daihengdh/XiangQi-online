@@ -19,6 +19,39 @@ const MIME = {
   '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.woff2': 'font/woff2',
 };
 
+/* ---------- 用户存储与登录（node:sqlite 优先，JSON 兜底，保持零 npm 依赖） ---------- */
+const NAME_RE = /^[一-龥A-Za-z0-9_]{1,12}$/;
+const userStore = (() => {
+  try {
+    const { DatabaseSync } = require('node:sqlite');
+    const db = new DatabaseSync(path.join(__dirname, 'users.db'));
+    db.exec('CREATE TABLE IF NOT EXISTS users (name TEXT PRIMARY KEY, token TEXT, created_at INTEGER, last_login INTEGER)');
+    return {
+      kind: 'sqlite',
+      get(name) { const r = db.prepare('SELECT name, token FROM users WHERE name = ?').get(name); return r || null; },
+      upsert(name, token) {
+        db.prepare("INSERT INTO users (name, token, created_at, last_login) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET last_login = excluded.last_login")
+          .run(name, token, Date.now(), Date.now());
+      },
+    };
+  } catch (e) {
+    const uf = path.join(__dirname, 'users.json');
+    let data = {};
+    try { data = JSON.parse(fs.readFileSync(uf, 'utf8')); } catch (e2) {}
+    return {
+      kind: 'json',
+      get(name) { return data[name] || null; },
+      upsert(name, token) {
+        data[name] = data[name] || { created: Date.now() };
+        data[name].token = token; data[name].last = Date.now();
+        try { fs.writeFileSync(uf, JSON.stringify(data, null, 1)); } catch (e2) {}
+      },
+    };
+  }
+})();
+
+function newToken() { return crypto.randomBytes(16).toString('hex'); }
+
 /* ---------- Pikafish 引擎托管（线下辅助支招用，可选：缺文件时自动降级内置引擎） ---------- */
 const { Pikafish } = require(path.join(__dirname, 'tools/pikafish-uci.js'));
 const ENGINE_DIR = path.join(__dirname, 'engines', 'pikafish');
@@ -87,6 +120,44 @@ const fromUCI = (u) => {
 /* ---------- 静态文件 ---------- */
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+
+  /* API：登录/注册（POST /api/login {name}）——输一个名字即可，首次自动注册 */
+  if (req.method === 'POST' && urlPath === '/api/login') {
+    let body = '';
+    req.on('data', (d) => { body += d; if (body.length > 1e4) req.destroy(); });
+    req.on('end', () => {
+      let name = '';
+      try { name = String(JSON.parse(body || '{}').name || '').trim(); } catch (e) {}
+      if (!NAME_RE.test(name)) {
+        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: '昵称需 1-12 位中文/字母/数字/下划线' }));
+        return;
+      }
+      const existing = userStore.get(name);
+      const isNew = !existing;
+      const token = existing ? existing.token : newToken();
+      userStore.upsert(name, token);
+      console.log('[用户] ' + (isNew ? '新注册' : '登录') + '：' + name);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ ok: true, name, token, isNew }));
+    });
+    return;
+  }
+
+  /* API：等待中的房间列表（GET /api/rooms） */
+  if (req.method === 'GET' && urlPath === '/api/rooms') {
+    const list = [];
+    for (const r of rooms.values()) {
+      if (r.status !== 'waiting') continue;
+      if (r.red && r.black) continue;          // 双方已就座（准备中），不可加入
+      const host = (r.red || r.black || {}).name || '?';
+      list.push({ id: r.id, host, createdAt: r.createdAt });
+    }
+    list.sort((a, b) => b.createdAt - a.createdAt);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ rooms: list.slice(0, 30) }));
+    return;
+  }
 
   /* API：皮卡鱼最佳着法（POST /api/bestmove  {fen, movetime?}） */
   if (req.method === 'POST' && urlPath === '/api/bestmove') {
@@ -270,7 +341,8 @@ function roomSnapshot(room) {
     red: { id: room.red ? room.red.id : null, name: room.red ? room.red.name : null, online: !!room.redConn },
     black: { id: room.black ? room.black.id : null, name: room.black ? room.black.name : null, online: !!room.blackConn },
     clocks: { red: room.clockRed, black: room.clockBlack },
-    status: room.status,           // waiting | playing | over
+    status: room.status,           // waiting | readying | playing | over
+    ready: room.ready || null,
     result: room.result || null,   // {winner:1|-1|0, reason}
     drawOffer: room.drawOffer || null,
     undoOffer: room.undoOffer || null,
@@ -300,6 +372,23 @@ function seatOf(room, playerId) {
 
 function bothOnline(room) { return !!room.redConn && !!room.blackConn; }
 
+function identityError(msg) {
+  const name = String(msg.name || '');
+  if (!NAME_RE.test(name)) return '昵称需 1-12 位中文/字母/数字/下划线';
+  const u = userStore.get(name);
+  if (u && u.token && msg.token && u.token !== msg.token) return '该昵称已在其他设备登录';
+  return null;
+}
+
+function enterReadying(room, pendingSwap) {
+  if (room.status !== 'waiting' && room.status !== 'over') return;
+  room.status = 'readying';
+  room.pendingSwap = !!pendingSwap;
+  room.ready = { 1: false, '-1': false };
+  if (room.aiPlayerId) room.ready[aiSeatOf(room) === 1 ? 1 : -1] = true;   // AI 自动准备
+  broadcast(room, Object.assign(roomSnapshot(room), { t: 'readying' }));
+}
+
 function startGame(room, swapSides) {
   if (swapSides && room.red && room.black) {
     const t = room.red; room.red = room.black; room.black = t;
@@ -309,6 +398,8 @@ function startGame(room, swapSides) {
   room.moveList = [];
   room.notationList = [];
   room.lastMove = null;
+  room.ready = { 1: false, '-1': false };
+  room.pendingSwap = false;
   room.status = 'playing';
   room.result = null; room.drawOffer = null; room.undoOffer = null; room.rematch = null;
   room.disconnectAt = null;
@@ -390,6 +481,7 @@ function createRoom(name, wantsRed) {
     lastMove: null, result: null, drawOffer: null, undoOffer: null,
     clockRed: BASE_TIME, clockBlack: BASE_TIME, turnStart: 0,
     aiPlayerId: null, aiTimer: null,
+    ready: { 1: false, '-1': false }, pendingSwap: false,
   };
   rooms.set(id, room);
   return room;
@@ -446,6 +538,8 @@ function route(conn, raw) {
 
   switch (msg.t) {
     case 'create': {
+      const idErr = identityError(msg);
+      if (idErr) { conn.send(JSON.stringify({ t: 'error', error: idErr })); break; }
       const name = String(msg.name || '玩家').slice(0, 20);
       const room = createRoom(name);
       const player = { id: newPlayerId(), name };
@@ -482,6 +576,8 @@ function route(conn, raw) {
         console.log(`[房间 ${room.id}] ${msg.playerId} 重连`);
         break;
       }
+      const idErr = identityError(msg);
+      if (idErr) { conn.send(JSON.stringify({ t: 'error', error: idErr })); break; }
       const name = String(msg.name || '玩家').slice(0, 20);
       const player = { id: newPlayerId(), name };
       if (!room.red) { room.red = player; room.redConn = conn; }
@@ -490,8 +586,20 @@ function route(conn, raw) {
       conn.roomId = room.id;
       playerMap.set(player.id, { room: room.id, seat: seatOf(room, player.id) });
       conn.send(JSON.stringify(Object.assign(roomSnapshot(room), { t: 'joined', you: player.id })));
-      if (room.status === 'waiting' && room.red && room.black && room.redConn && room.blackConn) startGame(room);
-      else if (room.status === 'playing' && bothOnline(room)) room.turnStart = Date.now();
+      if (room.status === 'waiting' && room.red && room.black && room.redConn && room.blackConn) {
+        enterReadying(room, false);   // 双方就座 → 等待双方准备
+      } else if (room.status === 'playing' && bothOnline(room)) room.turnStart = Date.now();
+      break;
+    }
+    case 'ready': {
+      const room = rooms.get(conn.roomId);
+      if (!room || room.status !== 'readying') break;
+      const seat = seatOf(room, conn.playerId);
+      if (seat === 0) break;
+      if (room.aiPlayerId && aiSeatOf(room) === seat) break;   // AI 恒为已准备
+      room.ready[seat] = !!msg.on;
+      broadcast(room, { t: 'ready-update', ready: { 1: room.ready[1], '-1': room.ready['-1'] } });
+      if (room.ready[1] && room.ready['-1']) startGame(room, room.pendingSwap);
       break;
     }
     case 'quick': {
@@ -530,7 +638,7 @@ function route(conn, raw) {
       room.aiPlayerId = ai.id;
       broadcast(room, { t: 'ai-added', name: ai.name });
       conn.send(JSON.stringify(Object.assign(roomSnapshot(room), { t: 'room', you: conn.playerId })));
-      if (room.status === 'waiting' && room.red && room.black) startGame(room);
+      if (room.status === 'waiting' && room.red && room.black) enterReadying(room, false);
       console.log(`[房间 ${room.id}] 已添加电脑对手：${ai.name}（${aiSeatOf(room) === 1 ? '红' : '黑'}方）`);
       break;
     }
@@ -615,8 +723,8 @@ function route(conn, raw) {
       }
       if (room.rematch) {
         if (room.rematch !== conn.playerId) {
-          // 双方都同意：换先手重开
-          startGame(room, true);
+          // 双方都同意：换先手，进入准备阶段
+          enterReadying(room, true);
           room.rematch = null;
         }
         // 同一玩家重复点击忽略

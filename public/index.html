@@ -68,9 +68,12 @@
     </div>
     <div class="lobby-net-tip">服务器地址：<span id="lobby-server-addr"></span> · 状态：<span id="lobby-net-state" class="net-status">检测中…</span></div>
     <div class="lobby-name-row">
-      <label style="line-height:38px">昵称：</label>
-      <input id="lobby-name" maxlength="12" placeholder="输入你的昵称">
+      <label style="line-height:38px">用户：</label>
+      <input id="login-name" maxlength="12" placeholder="输入昵称（首次自动注册）">
+      <button id="btn-dice" title="随机起个名字">🎲</button>
+      <button id="btn-login" class="login-btn">登录 / 注册</button>
     </div>
+    <div class="login-state" id="login-state">未登录 — 人机 / 残局 / 沙盘可直接玩；联机对战需先登录</div>
   </div>
 
   <!-- 对局页（人机与联机共用） -->
@@ -152,6 +155,7 @@
         <div class="actions" style="margin-top:10px;grid-template-columns:1fr 1fr">
           <button id="btn-add-ai" style="display:none">🤖 添加皮卡鱼对手</button>
           <button id="btn-invite" style="display:none">🔗 复制邀请链接</button>
+          <button id="btn-ready" style="grid-column:1 / -1;display:none">✅ 准备开局</button>
         </div>
         <div class="room-row">
           <input id="room-join-input" maxlength="4" placeholder="房间码">

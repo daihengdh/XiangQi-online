@@ -1187,11 +1187,41 @@
   }
 
   function bindPvpUI() {
+    let roomListTimer = null;
     $('card-pvp').onclick = () => {
       SFX.S.click();
-      $('pvp-name').value = G.myName;
+      $('pvp-name').value = G.myName || '';
+      $('pvp-name').readOnly = !!G.loggedIn;
       $('dialog-pvp').classList.add('show');
+      loadRooms();
+      clearInterval(roomListTimer);
+      roomListTimer = setInterval(() => {
+        if (!$('dialog-pvp').classList.contains('show')) { clearInterval(roomListTimer); return; }
+        loadRooms();
+      }, 3000);
     };
+    async function loadRooms() {
+      try {
+        const resp = await fetch('/api/rooms');
+        const j = await resp.json();
+        const box = $('room-list');
+        if (!j.rooms || !j.rooms.length) { box.innerHTML = '<div class="room-empty">暂无等待中的房间——创建一个，等朋友从列表加入</div>'; return; }
+        box.innerHTML = j.rooms.map(r =>
+          '<div class="hist-item-style room-item" data-room="' + r.id + '">' +
+          '<span class="rhost">房主：' + r.host + '</span>' +
+          '<span class="rphase">房间 ' + r.id + ' · 等待加入</span>' +
+          '<button>加入</button></div>').join('');
+        box.querySelectorAll('.room-item button').forEach((b, i) => {
+          b.onclick = () => {
+            SFX.S.click();
+            startPvp('join', j.rooms[i].id);
+            $('dialog-pvp').classList.remove('show');
+          };
+        });
+      } catch (e) {
+        $('room-list').innerHTML = '<div class="room-empty">房间列表加载失败（服务器未响应）</div>';
+      }
+    }
     $('pvp-quick').onclick = () => { startPvp('quick'); };
     $('pvp-create').onclick = () => { startPvp('create'); };
     // 对局页内的房间码加入（联机等待界面直接输入对方房间码）
@@ -1212,7 +1242,8 @@
   }
 
   function startPvp(action, room) {
-    const name = ($('pvp-name').value || '').trim() || '玩家' + ((Math.random() * 90 + 10) | 0);
+    if (!G.loggedIn) { FX.banner('请先在大厅登录（输个昵称即可）'); return; }
+    const name = G.myName;
     G.myName = name;
     localStorage.setItem('xq-name', name);
     $('dialog-pvp').classList.remove('show');
@@ -1334,11 +1365,32 @@
     };
 
     net.on('created', (m) => { syncFromSnapshot(m); chatSys('房间已创建，等待对手…'); });
-    net.on('joined', (m) => { syncFromSnapshot(m); refreshAIButton(m); refreshInvite(m); });
+    net.on('joined', (m) => { syncFromSnapshot(m); refreshAIButton(m); refreshInvite(m); refreshReady(m); });
+    net.on('readying', (m) => { syncFromSnapshot(m); refreshReady(m.ready); });
+    net.on('ready-update', (m) => refreshReady(m.ready));
+    $('btn-ready').onclick = () => {
+      SFX.S.click();
+      net.send({ t: 'ready', on: !G.myReady });
+    };
+    function refreshReady(ready) {
+      const btn = $('btn-ready');
+      if (!btn) return;
+      if (G.mode !== 'pvp' || !ready || G.over) { btn.style.display = 'none'; return; }
+      const myKey = G.mySeat === 1 ? '1' : '-1';
+      const oppKey = G.mySeat === 1 ? '-1' : '1';
+      G.myReady = !!ready[myKey];
+      btn.style.display = '';
+      btn.disabled = !!ready[myKey];
+      btn.textContent = ready[myKey]
+        ? '⌛ 已准备，等待对方…'
+        : (ready[oppKey] ? '✅ 对方已准备，点击准备开局' : '✅ 准备开局');
+    }
     net.on('rejoined', (m) => { syncFromSnapshot(m); chatSys('已重新连接'); refreshAIButton(m); refreshInvite(m); });
     net.on('start', (m) => {
       const aiBtn = $('btn-add-ai');
       if (aiBtn) aiBtn.style.display = 'none';
+      const readyBtn = $('btn-ready');
+      if (readyBtn) readyBtn.style.display = 'none';
       G.st = XQ.stateFromFEN(m.fen);
       G.notations = []; G.over = false; G.result = null; G.lastMove = null; G.mateType = null;
       G.clocks = { red: m.clocks.red, black: m.clocks.black };
@@ -1809,12 +1861,57 @@
     $('stat-eg-rate').textContent = s.endgame.total ? s.endgame.rate + '% 成功率' : '—';
   }
 
-  $('lobby-name').addEventListener('change', () => {
-    G.myName = $('lobby-name').value.trim();
-    if (G.myName) localStorage.setItem('xq-name', G.myName);
-    renderStatsPanel();   // 昵称切换 → 战绩跟随切换
-  });
-  if (G.myName) $('lobby-name').value = G.myName;
+  /* ---------- 大厅登录 / 注册（输昵称即可，首次自动注册） ---------- */
+  function setLoginState(logged, name) {
+    G.loggedIn = logged;
+    const st = $('login-state');
+    st.className = 'login-state' + (logged ? ' logged' : '');
+    st.textContent = logged
+      ? '✓ 当前用户：' + name + '（联机对战已就绪）'
+      : '未登录 — 人机 / 残局 / 沙盘可直接玩；联机对战需先登录';
+    renderStatsPanel();
+  }
+  const DICE_A = ['踏雪', '追风', '凌云', '听雨', '望月', '惊鸿', '断浪', '摘星', '寒江', '孤灯', '逐日', '听涛'];
+  const DICE_B = ['小棋王', '大将军', '老棋痴', '少年游', '百胜将', '卧龙生', '金枪手', '神算子'];
+  $('btn-dice').onclick = () => {
+    SFX.S.click();
+    $('login-name').value = DICE_A[(Math.random() * DICE_A.length) | 0] + DICE_B[(Math.random() * DICE_B.length) | 0];
+  };
+  $('btn-login').onclick = async () => {
+    const name = $('login-name').value.trim();
+    if (!name) { $('login-name').focus(); FX.banner('先输入昵称，或点骰子随机取一个'); return; }
+    $('btn-login').disabled = true;
+    try {
+      const resp = await fetch('/api/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const j = await resp.json();
+      if (!j.ok) { FX.banner(j.error || '登录失败'); return; }
+      G.myName = j.name;
+      G.loggedIn = true;
+      localStorage.setItem('xq-name', j.name);
+      localStorage.setItem('xq-token', j.token);
+      setLoginState(true, j.name);
+      FX.banner(j.isNew ? '注册成功：' + j.name : '欢迎回来：' + j.name, { hold: 1600 });
+      SFX.S.win();
+    } catch (e) {
+      FX.banner('登录失败：服务器未响应');
+    } finally {
+      $('btn-login').disabled = false;
+    }
+  };
+  /* 启动时恢复登录态（本机以前登录过的用户名 + token） */
+  (function restoreLogin() {
+    const savedName = localStorage.getItem('xq-user') || localStorage.getItem('xq-name');
+    const savedToken = localStorage.getItem('xq-token');
+    if (savedName && savedToken) {
+      G.myName = savedName;
+      G.loggedIn = true;
+      $('login-name').value = savedName;
+      setLoginState(true, savedName);
+    }
+  })();
 
   /* ---------- 启动 ---------- */
   bindPveUI();

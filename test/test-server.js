@@ -33,6 +33,11 @@ function test(name, fn) {
   try { fn(); passed++; console.log('  ✓ ' + name); }
   catch (e) { failed++; console.error('  ✗ ' + name + '：' + e.message); }
 }
+// 准备机制：双方就座后需各自 ready 才开局
+function readyUp(S, x, y) {
+  S.route(x, JSON.stringify({ t: 'ready', on: true }));
+  S.route(y, JSON.stringify({ t: 'ready', on: true }));
+}
 
 /* ---------- 1. 建房 + 加入 → 自动开始 ---------- */
 test('建房/加入/开始', () => {
@@ -43,6 +48,7 @@ test('建房/加入/开始', () => {
   assert(a.roomId, '创建者绑定房间');
 
   S.route(b, JSON.stringify({ t: 'join', room: a.roomId, name: '小黑' }));
+  readyUp(S, a, b);
   const started = b.wait('start');
   assert(started.fen === XQ.START_FEN, '开局 FEN');
   assert(started.red === '小红' && started.black === '小黑', '座位分配');
@@ -54,6 +60,7 @@ test('非法着法被拒绝', () => {
   const a = new FakeConn(), b = new FakeConn();
   S.route(a, JSON.stringify({ t: 'create', name: 'A' }));
   S.route(b, JSON.stringify({ t: 'join', room: a.roomId, name: 'B' }));
+  readyUp(S, a, b);
   b.wait('start'); a.wait('start');
 
   // 黑方（b）先走 → 被拒（红先）
@@ -74,6 +81,7 @@ test('完整对局到将死', () => {
   const a = new FakeConn(), b = new FakeConn();
   S.route(a, JSON.stringify({ t: 'create', name: '甲' }));
   S.route(b, JSON.stringify({ t: 'join', room: a.roomId, name: '乙' }));
+  readyUp(S, a, b);
   b.wait('start'); a.wait('start');
 
   // 双方各走两步走到可测局面：直接构造——用服务器 API 复制房间状态
@@ -92,6 +100,7 @@ test('认输判负', () => {
   const a = new FakeConn(), b = new FakeConn();
   S.route(a, JSON.stringify({ t: 'create', name: '甲' }));
   S.route(b, JSON.stringify({ t: 'join', room: a.roomId, name: '乙' }));
+  readyUp(S, a, b);
   b.wait('start'); a.wait('start');
   S.route(b, JSON.stringify({ t: 'resign' }));
   const e = a.wait('end');
@@ -102,6 +111,7 @@ test('求和流程', () => {
   const a = new FakeConn(), b = new FakeConn();
   S.route(a, JSON.stringify({ t: 'create', name: '甲' }));
   S.route(b, JSON.stringify({ t: 'join', room: a.roomId, name: '乙' }));
+  readyUp(S, a, b);
   b.wait('start'); a.wait('start');
   S.route(a, JSON.stringify({ t: 'draw' }));          // 红求和
   assert(b.wait('draw-offer').from === a.playerId, '收到求和');
@@ -114,6 +124,7 @@ test('悔棋流程', () => {
   const a = new FakeConn(), b = new FakeConn();
   S.route(a, JSON.stringify({ t: 'create', name: '甲' }));
   S.route(b, JSON.stringify({ t: 'join', room: a.roomId, name: '乙' }));
+  readyUp(S, a, b);
   b.wait('start'); a.wait('start');
   // 红走一步，黑走一步，然后黑求悔棋
   S.route(a, JSON.stringify({ t: 'move', from: 70, to: 67 }));
@@ -132,6 +143,7 @@ test('聊天广播', () => {
   const a = new FakeConn(), b = new FakeConn();
   S.route(a, JSON.stringify({ t: 'create', name: '甲' }));
   S.route(b, JSON.stringify({ t: 'join', room: a.roomId, name: '乙' }));
+  readyUp(S, a, b);
   b.wait('start'); a.wait('start');
   a.inbox.length = 0; b.inbox.length = 0;
   S.route(a, JSON.stringify({ t: 'chat', text: '你好！' }));
@@ -145,6 +157,7 @@ test('快速匹配复用等待房间', () => {
   const roomA = a.roomId;
   const b = new FakeConn();
   S.route(b, JSON.stringify({ t: 'quick', name: '等二' }));
+  readyUp(S, a, b);
   assert(b.roomId === roomA, '加入同一房间');
   assert(b.wait('start'), '自动开局');
 });
@@ -154,8 +167,10 @@ test('房间满被拒', () => {
   const a = new FakeConn(), b = new FakeConn(), c = new FakeConn();
   S.route(a, JSON.stringify({ t: 'create', name: 'A' }));
   S.route(b, JSON.stringify({ t: 'join', room: a.roomId, name: 'B' }));
+  readyUp(S, a, b);
   b.wait('start');
   S.route(c, JSON.stringify({ t: 'join', room: a.roomId, name: 'C' }));
+  readyUp(S, a, c);
   assert(c.wait('error').error.includes('已满'), '第三人被拒');
 });
 
@@ -164,6 +179,7 @@ test('再来一局流程', () => {
   const a = new FakeConn(), b = new FakeConn();
   S.route(a, JSON.stringify({ t: 'create', name: '甲' }));
   S.route(b, JSON.stringify({ t: 'join', room: a.roomId, name: '乙' }));
+  readyUp(S, a, b);
   b.wait('start'); a.wait('start');
   // 打到结束：红方直接认输
   S.route(a, JSON.stringify({ t: 'resign' }));
@@ -175,8 +191,10 @@ test('再来一局流程', () => {
   // A 重复点击 → 忽略（无第二次 offer）
   S.route(a, JSON.stringify({ t: 'rematch' }));
   assert(!b.inbox.some(m => m.t === 'rematch-offer' && m !== b.inbox.find(x => x.t === 'rematch-offer')), '重复点击被忽略');
-  // B 同意 → 自动重开（换先手：乙变红）
+  // B 同意 → 双方进入准备阶段（换先手：乙变红），重新准备后开局
   S.route(b, JSON.stringify({ t: 'rematch' }));
+  assert(b.wait('readying').status === 'readying', '进入准备阶段');
+  readyUp(S, a, b);
   const startsB = b.inbox.filter(m => m.t === 'start');
   const startsA = a.inbox.filter(m => m.t === 'start');
   assert(startsB.length >= 2, 'B 收到第二次开局广播');
@@ -190,6 +208,7 @@ test('将死广播含 mateType', () => {
   const a = new FakeConn(), b = new FakeConn();
   S.route(a, JSON.stringify({ t: 'create', name: '甲' }));
   S.route(b, JSON.stringify({ t: 'join', room: a.roomId, name: '乙' }));
+  readyUp(S, a, b);
   b.wait('start'); a.wait('start');
   // 直接设为马后炮杀局面：红走一步将死
   const room = S.rooms.get(a.roomId);

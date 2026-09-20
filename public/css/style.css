@@ -765,3 +765,35 @@ body {
   background: linear-gradient(180deg, #b03024, #7a1104); color: #fff;
 }
 .sandbox-open-btn:hover { filter: brightness(1.2); }
+
+/* ---------- 登录 / 房间列表 / 准备 ---------- */
+.lobby-name-row .login-btn {
+  background: linear-gradient(180deg, #2e8b57, #1d6b3f); border: 1px solid #57b57a;
+  color: #fff; border-radius: 8px; padding: 9px 16px; cursor: pointer; font-size: 14.5px;
+}
+.lobby-name-row .login-btn:hover { filter: brightness(1.15); }
+.lobby-name-row #btn-dice {
+  width: 40px; font-size: 19px; border-radius: 8px; border: 1px solid #9a7038;
+  background: #fbf5e3; cursor: pointer; line-height: 36px;
+}
+.lobby-name-row #btn-dice:hover { background: #fff; }
+.login-state { margin-top: 8px; font-size: 13px; color: #c9b587; text-align: center; }
+.login-state.logged { color: #7fd67f; }
+.roomlist-wrap {
+  margin-top: 14px; padding: 10px 12px; background: rgba(244,231,205,.08);
+  border: 1px solid rgba(212,160,23,.35); border-radius: 10px; max-height: 300px; overflow-y: auto;
+}
+.roomlist-wrap .panel-title { color: #cbb488; }
+.hist-item-style.room-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-top: 6px;
+  background: #fdf6e4; border: 1px solid #d8c391; border-radius: 8px; color: var(--ink); font-size: 13.5px;
+}
+.room-item .rhost { font-weight: 700; flex: 1; }
+.room-item .rphase { color: var(--dim); font-size: 12px; }
+.room-item button {
+  padding: 5px 14px; border-radius: 6px; border: 1px solid #57b57a;
+  background: linear-gradient(180deg, #2e8b57, #1d6b3f); color: #fff; cursor: pointer; font-size: 13px;
+}
+.room-item button:hover { filter: brightness(1.15); }
+.room-empty { text-align: center; color: #a08a5e; padding: 14px 0; font-size: 13px; }
+#btn-ready:disabled { opacity: .55; cursor: default; }
