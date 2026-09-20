@@ -56,6 +56,8 @@ function newToken() { return crypto.randomBytes(16).toString('hex'); }
 const { Pikafish } = require(path.join(__dirname, 'tools/pikafish-uci.js'));
 const ENGINE_DIR = path.join(__dirname, 'engines', 'pikafish');
 const pf = { eng: null, starting: null, lastFail: 0, queue: Promise.resolve() };
+/* 引擎吃满机器：线程=逻辑核-4（留给 Node/浏览器），置换表 2GB */
+const PF_THREADS = Math.max(1, require('os').cpus().length - 4);
 
 function startPikafish() {
   if (pf.eng) return Promise.resolve(true);
@@ -66,11 +68,11 @@ function startPikafish() {
       const eng = new Pikafish({
         exe: path.join(ENGINE_DIR, 'pikafish.exe'),
         nnue: path.join(ENGINE_DIR, 'pikafish.nnue'),
-        threads: 1, hash: 128,
+        threads: PF_THREADS, hash: 2048,
       });
       eng.start().then(() => {
         pf.eng = eng; pf.starting = null;
-        console.log('[Pikafish] 引擎已就绪（NNUE 权重已加载）');
+        console.log('[Pikafish] 引擎已就绪（' + PF_THREADS + ' 线程 / 2048MB 置换表，NNUE 已加载）');
         resolve(true);
       }).catch((e) => {
         pf.lastFail = Date.now(); pf.starting = null;

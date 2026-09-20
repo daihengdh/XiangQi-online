@@ -73,12 +73,14 @@ async function playGame(gi, engRed, engBlack, movetime) {
 }
 
 (async () => {
-  const engA = new Pikafish({ exe: EXE, nnue: NNUE, threads: 2, hash: 256 });
-  const engB = new Pikafish({ exe: EXE, nnue: NNUE, threads: 2, hash: 256 });
+  const cores = require('os').cpus().length;
+  const perEng = Math.max(1, Math.floor(cores / 2) - 1);   // 两个实例平分核，各留 1 核给系统
+  const engA = new Pikafish({ exe: EXE, nnue: NNUE, threads: perEng, hash: 1024 });
+  const engB = new Pikafish({ exe: EXE, nnue: NNUE, threads: perEng, hash: 1024 });
   engA.name = 'A'; engB.name = 'B';
   const t0 = Date.now();
   await engA.start(); await engB.start();
-  console.log('✓ 两个皮卡鱼实例已就绪（各 2 线程 / 256MB）');
+  console.log(`✓ 两个皮卡鱼实例已就绪（各 ${perEng} 线程 / 1024MB）`);
 
   const tally = { red: 0, black: 0, draw: 0 };
   for (let gi = 0; gi < GAMES; gi++) {
