@@ -828,9 +828,9 @@
     sg.appendChild(btn);
   }
 
-  /* ---------- 沙盘推演：独立棋盘，自动演示杀招 / 亲手试杀 ---------- */
+  /* ---------- 沙盘推演：独立棋盘，自动演示杀招 / 亲手试杀 / 逐步回放 ---------- */
   let sbBoard = null;
-  let sb = null;               // { st, baseFen, pv, pvIdx, demo, trail, lastMove }
+  let sb = null;               // { st, baseFen, pv, pvIdx, demo, hist, pos, lastMove }
   let sbDemoTimer = null;
   let lastSandboxSeed = null;  // { fen, pv, mateIn } 最近一次检测到绝杀的局面
 
@@ -842,17 +842,19 @@
     sbEnsureBoard();
     sbBoard.onUserMove = (from, to) => {
       if (!sb || sb.demo) return;
-      const res = sbApply(from, to);
+      const res = sbMakeMove(from, to, true);
       if (res === 'over') return;
       sbEngineReply();   // 用户落子后皮卡鱼防守
     };
     sbBoard.canInteract = () => !!sb && !sb.demo;
-    sb = { st: XQ.stateFromFEN(fen), baseFen: fen, pv: pv || [], pvIdx: 0, demo: false, trail: [], lastMove: null };
+    sb = { st: XQ.stateFromFEN(fen), baseFen: fen, pv: pv || [], pvIdx: 0, demo: false, hist: [], pos: 0, lastMove: null };
     if (sbDemoTimer) { clearTimeout(sbDemoTimer); sbDemoTimer = null; }
     $('sandbox-mate').textContent = mateIn ? `发现 ${mateIn} 步绝杀！` : '';
     $('sb-demo').style.display = ''; $('sb-stop').style.display = 'none';
     $('dialog-sandbox').classList.add('show');
-    sbRender(pv && pv.length ? '沙盘就绪：▶ 自动演示将逐着走出皮卡鱼的绝杀路线；也可以直接在棋盘上亲手试杀。' : '沙盘就绪：可直接在棋盘上落子模拟，皮卡鱼会逐着防守；或点「▶ 自动演示」看它互弈。');
+    sbRender(pv && pv.length
+      ? '沙盘就绪：▶ 自动演示绝杀路线，◀ ▶ 随时逐步回放细看；也可亲手试杀。'
+      : '沙盘就绪：可亲手落子，皮卡鱼会逐着防守；或点「▶ 自动演示」互弈。◀ ▶ 随时回放。');
   }
   function sbStopDemo() {
     sb.demo = false;
@@ -861,30 +863,36 @@
   }
   function sbUpdateTrail() {
     const t = $('sandbox-trail');
-    if (!sb.trail.length) { t.innerHTML = '（尚无着法）'; return; }
+    if (!sb.hist.length) { t.innerHTML = '（尚无着法）'; return; }
     let html = '';
-    for (let i = 0; i < sb.trail.length; i += 2) {
-      html += (i ? '<br>' : '') + '<b>' + (i / 2 + 1) + '.</b> ' + sb.trail[i] +
-        (sb.trail[i + 1] ? '　' + sb.trail[i + 1] : '');
+    for (let i = 0; i < sb.hist.length; i += 2) {
+      const cur = i === sb.pos - 1 || i + 1 === sb.pos - 1;   // 当前浏览到的半回合所在行
+      const cls = i >= sb.pos ? ' future' : (cur ? ' cur' : '');
+      html += (i ? '<br>' : '') + '<span class="sb-row' + cls + '" data-i="' + i + '"><b>' + (i / 2 + 1) + '.</b> ' +
+        sb.hist[i].notation + (sb.hist[i + 1] ? '　' + sb.hist[i + 1].notation : '') + '</span>';
     }
     t.innerHTML = html;
-    t.scrollTop = t.scrollHeight;
+    const mark = t.querySelector('.sb-row.cur') || t.querySelector('.sb-row.future');
+    if (mark) mark.scrollIntoView({ block: 'nearest' });
   }
   function sbRender(msg) {
     sbBoard.setState(sb.st, { lastMove: sb.lastMove });
     if (msg !== undefined) $('sandbox-status').textContent = msg;
     sbUpdateTrail();
   }
-  /* 在沙盘上走一步（带动画与音效）。返回 'over' | true | false */
-  function sbApply(from, to) {
+  /* 在沙盘上走一步（带动画与音效）。返回 'over' | true | false。
+   * pos < hist.length 时走新着 = 从该局面分叉，后面被回退的着法作废 */
+  function sbMakeMove(from, to, animate) {
     const m = XQ.encode(from, to);
     if (!XQ.legalMoves(sb.st).includes(m)) return false;
     const notation = XQ.moveToChinese(sb.st, m);
     const cap = sb.st.board[to];
     XQ.make(sb.st, m);
-    sb.trail.push(notation);
+    sb.hist.length = sb.pos;
+    sb.hist.push({ from, to, notation, cap });
+    sb.pos++;
     sb.lastMove = { from, to };
-    sbBoard.setState(sb.st, { lastMove: sb.lastMove, animate: true, captured: cap });
+    sbBoard.setState(sb.st, { lastMove: sb.lastMove, animate: !!animate, captured: cap });
     sbUpdateTrail();
     SFX.S.drop();
     if (cap) setTimeout(() => SFX.S.capture(), 140);
@@ -898,15 +906,71 @@
     }
     return true;
   }
+  function sbPaint() {
+    sbBoard.setState(sb.st, { lastMove: sb.lastMove });
+    sbUpdateTrail();
+  }
+  /* 回放：退一步（非破坏式，可 ▶ 下一步 重放） */
+  function sbStepBack() {
+    if (!sb || sb.pos <= 0) { $('sandbox-status').textContent = '已经在起始局面'; return; }
+    sbStopDemo();
+    XQ.unmake(sb.st);
+    sb.pos--;
+    const prev = sb.hist[sb.pos - 1];
+    sb.lastMove = prev ? { from: prev.from, to: prev.to } : null;
+    sbPaint();
+    $('sandbox-status').textContent = sb.pos === 0
+      ? '已回退到起始局面（▶ 下一步可重放）'
+      : '回放 ' + sb.pos + ' / ' + sb.hist.length + ' —— ◀ 继续回退，▶ 前进';
+  }
+  /* 回放：前进一步（重放历史着法） */
+  function sbStepFwd() {
+    if (!sb) return;
+    if (sb.pos >= sb.hist.length) { $('sandbox-status').textContent = '已是最新局面（可继续落子或点 ▶ 自动演示）'; return; }
+    sbStopDemo();
+    const mv = sb.hist[sb.pos];
+    XQ.make(sb.st, XQ.encode(mv.from, mv.to));
+    sb.pos++;
+    sb.lastMove = { from: mv.from, to: mv.to };
+    sbPaint();
+    SFX.S.drop();
+    if (mv.cap) setTimeout(() => SFX.S.capture(), 140);
+    const st1 = XQ.status(sb.st);
+    $('sandbox-status').textContent = st1.over
+      ? '回放结束：' + (st1.reason === 'checkmate' ? '绝杀（' + (XQ.detectMateType(sb.st) || '') + '）' : (st1.reason === 'stalemate' ? '困毙' : st1.reason))
+      : (sb.pos >= sb.hist.length ? '回放到最新局面' : '回放 ' + sb.pos + ' / ' + sb.hist.length);
+  }
+  /* 回放：跳到第 target 步之后的局面（点击棋谱行） */
+  function sbJumpTo(target) {
+    if (!sb) return;
+    sbStopDemo();
+    target = Math.max(0, Math.min(sb.hist.length, target));
+    if (target === sb.pos) return;
+    while (sb.pos > target) { XQ.unmake(sb.st); sb.pos--; }
+    while (sb.pos < target) {
+      const mv = sb.hist[sb.pos];
+      XQ.make(sb.st, XQ.encode(mv.from, mv.to));
+      sb.pos++;
+    }
+    const prev = sb.hist[sb.pos - 1];
+    sb.lastMove = prev ? { from: prev.from, to: prev.to } : null;
+    sbPaint();
+    SFX.S.drop();
+    $('sandbox-status').textContent = sb.pos >= sb.hist.length ? '回放到最新局面' : '回放 ' + sb.pos + ' / ' + sb.hist.length;
+  }
   function sbDemoStep() {
     if (!sb || !sb.demo) return;
     if (sb.pvIdx < sb.pv.length) {   // 跟随绝杀路线
-      const mv = sb.pv[sb.pvIdx++];
-      const res = sbApply(mv.from, mv.to);
-      if (res === 'over') return;
-      $('sandbox-status').textContent = '自动演示中… 第 ' + Math.ceil(sb.trail.length / 2) + ' 回合';
-      sbDemoTimer = setTimeout(sbDemoStep, 850);
-      return;
+      const mv = sb.pv[sb.pvIdx];
+      if (XQ.legalMoves(sb.st).includes(XQ.encode(mv.from, mv.to))) {
+        sb.pvIdx++;
+        const res = sbMakeMove(mv.from, mv.to, true);
+        if (res === 'over') return;
+        $('sandbox-status').textContent = '自动演示中… 第 ' + Math.ceil(sb.pos / 2) + ' 回合（点 ◀ 可随时回退细看）';
+        sbDemoTimer = setTimeout(sbDemoStep, 850);
+        return;
+      }
+      sb.pvIdx = sb.pv.length;   // 局面已偏离绝杀路线 → 转入引擎互弈
     }
     /* 路线播完：引擎对弈演示（双方都用皮卡鱼最佳应手） */
     const fen = XQ.toFEN(sb.st);
@@ -916,14 +980,18 @@
     }).then(r => r.json()).then(j => {
       if (!sb || !sb.demo) return;
       if (!j.legal || j.from == null) { sbStopDemo(); sbRender('演示结束'); return; }
-      const res = sbApply(j.from, j.to);
+      const res = sbMakeMove(j.from, j.to, true);
       if (res === 'over') return;
       sbDemoTimer = setTimeout(sbDemoStep, 650);
     }).catch(() => { sbStopDemo(); sbRender('引擎请求失败，演示停止'); });
   }
   function sbStartDemo() {
     if (!sb) return;
-    sb.demo = true; sb.pvIdx = 0;
+    sb.demo = true;
+    /* 已走的着法若恰好是绝杀路线前缀，则从当前进度续播；否则从头演示 */
+    let i = 0;
+    while (i < sb.pos && i < sb.pv.length && sb.hist[i].from === sb.pv[i].from && sb.hist[i].to === sb.pv[i].to) i++;
+    sb.pvIdx = (i === sb.pos) ? sb.pos : 0;
     $('sb-demo').style.display = 'none'; $('sb-stop').style.display = '';
     $('sandbox-status').textContent = sb.pv.length ? '自动演示：皮卡鱼的绝杀路线…' : '自动演示：皮卡鱼双方互弈…';
     sbDemoStep();
@@ -941,7 +1009,7 @@
       if (!sb || sb.demo) return;
       if (j.legal && j.from != null) {
         setEvalBar(j.score, j.kind, G.mySeat);
-        const res = sbApply(j.from, j.to);
+        const res = sbMakeMove(j.from, j.to, true);
         if (res === 'over') return;
         if (j.kind === 'mate' && j.score > 0) $('sandbox-status').textContent = '⚠ 皮卡鱼宣告：' + j.score + ' 步内将死——沙盘里试试破解！';
         else sbRender('轮到你，继续进攻');
@@ -956,23 +1024,24 @@
   function bindSandboxUI() {
     $('sb-demo').onclick = () => { SFX.S.click(); sbStartDemo(); };
     $('sb-stop').onclick = () => { SFX.S.click(); sbStopDemo(); sbRender('演示已停止，可继续手动落子'); };
-    $('sb-undo').onclick = () => {
-      SFX.S.click();
-      sbStopDemo();
-      if (!sb.trail.length) return;
-      XQ.unmake(sb.st);
-      sb.trail.pop();
-      sb.lastMove = null;
-      sbRender('已悔一步');
-    };
+    $('sb-back').onclick = () => { SFX.S.click(); sbStepBack(); };
+    $('sb-fwd').onclick = () => { SFX.S.click(); sbStepFwd(); };
     $('sb-reset').onclick = () => {
       SFX.S.click();
       sbStopDemo();
       sb.st = XQ.stateFromFEN(sb.baseFen);
-      sb.trail = []; sb.pvIdx = 0; sb.lastMove = null;
+      sb.hist = []; sb.pos = 0; sb.pvIdx = 0; sb.lastMove = null;
       sbRender('已重置到起始局面');
     };
     $('sb-close').onclick = () => { SFX.S.click(); sbStopDemo(); $('dialog-sandbox').classList.remove('show'); };
+    $('sandbox-trail').onclick = (e) => {
+      const row = e.target.closest('.sb-row');
+      if (!row || !sb) return;
+      const i = +row.dataset.i;
+      if (i >= sb.hist.length) return;
+      SFX.S.click();
+      sbJumpTo(Math.min(sb.hist.length, i + (sb.hist[i + 1] ? 2 : 1)));
+    };
   }
 
   function bindOfflineUI() {

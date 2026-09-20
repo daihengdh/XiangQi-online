@@ -369,10 +369,12 @@ body {
   position: fixed; inset: 0; z-index: 60;
   background: rgba(10, 6, 2, .72);
   display: none; align-items: center; justify-content: center;
+  overflow-y: auto; padding: 14px; box-sizing: border-box;
 }
 .overlay.show { display: flex; }
 .dialog {
   width: 420px; max-width: 92vw;
+  margin: auto;   /* 内容高于屏幕时 auto margin 归零，配合 overlay 滚动，按钮不再被裁掉 */
   background: linear-gradient(180deg, #f4e7cd, #e2cfa4);
   border: 3px solid #8a6432; border-radius: 16px;
   color: var(--ink); padding: 26px 28px 22px;
@@ -741,7 +743,10 @@ body {
   border-radius: 10px;
 }
 .sandbox-stage canvas {
-  width: 547px; height: 630px;   /* 0.9x 缩放，点击坐标按 rect 归一化 */
+  /* board-ui.js render() 会写内联 width/height，必须 !important 才能覆盖；点击坐标按 rect 归一化，缩放安全。
+     0.904 = 棋盘宽高比 604/668；常数 = 弹窗内非棋盘高度（实测桌面约 322px + overlay 留白），保证弹窗不超出视口 */
+  width: min(88vw, 547px, calc((100vh - 355px) * 0.904)) !important;
+  height: auto !important;
   border-radius: 8px;
 }
 .sandbox-side { margin-top: 12px; }
@@ -754,9 +759,20 @@ body {
   min-height: 38px; max-height: 64px; overflow-y: auto; margin: 6px 0 10px;
   line-height: 1.6; background: #fdf6e4; border: 1px solid #d8c391; border-radius: 8px; padding: 6px 10px;
 }
+.sandbox-trail .sb-row { cursor: pointer; border-radius: 4px; padding: 0 3px; }
+.sandbox-trail .sb-row:hover { background: rgba(176, 48, 36, .12); }
+.sandbox-trail .sb-row.cur { background: rgba(176, 48, 36, .18); }
+.sandbox-trail .sb-row.future { opacity: .42; }
 .sandbox-mate { color: #b03024; font-size: 16px; }
 @media (max-width: 900px) {
-  .sandbox-stage canvas { width: min(90vw, 547px); height: auto; }
+  .sandbox-dialog { padding: 12px 12px 10px; }
+  .sandbox-dialog h2 { font-size: 19px; letter-spacing: 2px; margin-bottom: 8px; }
+  /* 移动端非棋盘区更紧凑（按钮/棋谱压小），常数相应减小 */
+  .sandbox-stage canvas { width: min(88vw, calc((100vh - 335px) * 0.904)) !important; }
+  .sandbox-side { margin-top: 8px; }
+  .sandbox-trail { max-height: 48px; margin: 4px 0 8px; }
+  .sandbox-side .actions { gap: 6px; }
+  .sandbox-side .actions button { padding: 8px 0; font-size: 14px; }
 }
 
 .sandbox-open-btn {
